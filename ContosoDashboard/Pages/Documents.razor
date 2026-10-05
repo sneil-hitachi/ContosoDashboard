@@ -1,0 +1,210 @@
+@page "/documents"
+@using System.Security.Claims
+@using ContosoDashboard.Models
+@using ContosoDashboard.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IDocumentService DocumentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IProjectService ProjectService
+
+<PageTitle>My Documents - ContosoDashboard</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Documents</h1>
+            <p class="text-muted mb-0">Your uploads and documents shared with you</p>
+        </div>
+        <span class="badge text-bg-light border">@documents.Count documents</span>
+    </div>
+
+    <DocumentUploadForm OnUploaded="ReloadDocuments" />
+
+    <div class="btn-group mt-4 mb-3" role="tablist" aria-label="Document views">
+        <button type="button" class="btn @(showShared ? "btn-outline-secondary" : "btn-secondary")" role="tab" aria-selected="@(!showShared)" @onclick="() => SwitchView(false)">My Documents</button>
+        <button type="button" class="btn @(showShared ? "btn-secondary" : "btn-outline-secondary")" role="tab" aria-selected="@showShared" @onclick="() => SwitchView(true)">Shared with Me</button>
+    </div>
+
+    <section aria-label="Document search and filters">
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-12 col-lg-3">
+                <label class="form-label" for="document-search">Search</label>
+                <InputText id="document-search" class="form-control" @bind-Value="searchTerm" placeholder="Title, description, tag, uploader, project" />
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label" for="document-category">Category</label>
+                <InputSelect id="document-category" class="form-select" @bind-Value="category">
+                    <option value="">All categories</option>
+                    @foreach (var value in ContosoDashboard.Services.DocumentService.Categories)
+                    {
+                        <option value="@value">@value</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label" for="document-project">Project</label>
+                <InputSelect id="document-project" class="form-select" @bind-Value="projectValue">
+                    <option value="">All projects</option>
+                    @foreach (var project in projects)
+                    {
+                        <option value="@project.ProjectId">@project.Name</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-6 col-md-3 col-lg-1">
+                <label class="form-label" for="document-from">From</label>
+                <input id="document-from" class="form-control" type="date" value="@fromDate" @onchange="args => fromDate = args.Value?.ToString()" />
+            </div>
+            <div class="col-6 col-md-3 col-lg-1">
+                <label class="form-label" for="document-through">Through</label>
+                <input id="document-through" class="form-control" type="date" value="@throughDate" @onchange="args => throughDate = args.Value?.ToString()" />
+            </div>
+            <div class="col-7 col-md-4 col-lg-2">
+                <label class="form-label" for="document-sort">Sort by</label>
+                <InputSelect id="document-sort" class="form-select" @bind-Value="sortBy">
+                    <option value="title">Title</option>
+                    <option value="date">Upload date</option>
+                    <option value="category">Category</option>
+                    <option value="size">Size</option>
+                </InputSelect>
+            </div>
+            <div class="col-5 col-md-2 col-lg-1 d-grid">
+                <button type="button" class="btn btn-outline-secondary" @onclick="ToggleSort" aria-label="Toggle sort direction">@(sortDescending ? "Newest" : "Oldest")</button>
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button type="button" class="btn btn-primary" @onclick="ReloadDocuments">Apply</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="ClearFilters">Clear</button>
+            </div>
+        </div>
+    </section>
+
+    <section aria-label="Document results">
+        @if (documents.Count == 0)
+        {
+            <p class="text-muted">@(showShared ? "No documents have been shared with you." : "No documents match these filters.")</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col">Title</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Uploaded</th>
+                            <th scope="col">Uploader</th>
+                            <th scope="col">Size</th>
+                            <th scope="col">Project</th>
+                            <th scope="col">File type</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var document in documents)
+                        {
+                            <tr @key="document.DocumentId">
+                                <td>
+                                    <div class="fw-semibold">@document.Title</div>
+                                    <div class="small text-muted">@document.OriginalFileName</div>
+                                </td>
+                                <td>@document.Category</td>
+                                <td>@document.UploadedAtUtc.ToLocalTime().ToString("g")</td>
+                                <td>@document.Uploader.DisplayName</td>
+                                <td>@FormatSize(document.FileSize)</td>
+                                <td>@(document.Project?.Name ?? "Personal")</td>
+                                <td>@document.FileType</td>
+                                <td class="text-end text-nowrap">
+                                    @if (document.FileType is "application/pdf" or "image/jpeg" or "image/png")
+                                    {
+                                        <a class="btn btn-sm btn-outline-secondary" href="/documents/@document.DocumentId/preview" target="_blank" rel="noopener">Preview</a>
+                                    }
+                                    <a class="btn btn-sm btn-outline-primary" href="/documents/@document.DocumentId/download">Download</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<Document> documents = [];
+    private IReadOnlyList<Project> projects = [];
+    private ClaimsPrincipal principal = new();
+    private bool showShared;
+    private bool sortDescending = true;
+    private string? searchTerm;
+    private string? category;
+    private string? projectValue;
+    private string sortBy = "date";
+    private string? fromDate;
+    private string? throughDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        principal = authState.User;
+        if (int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            projects = await ProjectService.GetUserProjectsAsync(userId);
+        }
+
+        await ReloadDocuments();
+    }
+
+    private async Task ReloadDocuments()
+    {
+        var query = new DocumentQueryOptions
+        {
+            SearchTerm = searchTerm,
+            Category = category,
+            ProjectId = int.TryParse(projectValue, out var projectId) ? projectId : null,
+            FromUtc = ParseDate(fromDate),
+            ThroughUtc = ParseDate(throughDate)?.AddDays(1).AddTicks(-1),
+            SortBy = sortBy,
+            SortDescending = sortDescending,
+            OwnerOnly = !showShared,
+            SharedWithMeOnly = showShared
+        };
+        documents = await DocumentService.SearchAsync(principal, query);
+    }
+
+    private async Task SwitchView(bool shared)
+    {
+        showShared = shared;
+        await ReloadDocuments();
+    }
+
+    private async Task ToggleSort()
+    {
+        sortDescending = !sortDescending;
+        await ReloadDocuments();
+    }
+
+    private async Task ClearFilters()
+    {
+        searchTerm = null;
+        category = null;
+        projectValue = null;
+        fromDate = null;
+        throughDate = null;
+        sortBy = "date";
+        sortDescending = true;
+        await ReloadDocuments();
+    }
+
+    private static DateTime? ParseDate(string? value)
+    {
+        return DateTime.TryParse(value, out var date) ? DateTime.SpecifyKind(date, DateTimeKind.Utc) : null;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        return bytes < 1024 * 1024
+            ? $"{bytes / 1024d:0.#} KB"
+            : $"{bytes / (1024d * 1024d):0.#} MB";
+    }
+}

@@ -6,10 +6,15 @@ This guide validates the feature in the local training environment. It does not 
 
 - Windows with the .NET 10 SDK and SQL Server LocalDB.
 - A local ClamAV Windows installation with `clamscan.exe` and a usable local signature database. Prepare/update signatures before disconnecting; the application must not contact an update service at runtime.
-- The scanner executable path and local storage root configured for the development environment. Storage must resolve outside `ContosoDashboard/wwwroot`.
+- Configure `Documents:Scanner:ExecutablePath` to the full path of `clamscan.exe` when it is not on `PATH`, and configure `Documents:StorageRoot` to a writable directory outside `ContosoDashboard/wwwroot`. Keep machine-specific paths in user secrets or an untracked development settings override; do not commit them.
+- The scanner process must be able to read the staged file and its local signature database. Do not run the web application elevated just to make scanning work.
 - Existing LocalDB users/projects may contain training data. Back up before schema changes. Do not drop the database unless you explicitly choose the documented reset fallback.
 
-If ClamAV or its signature database is unavailable, uploads are expected to fail closed.
+If ClamAV, its signature database, or a complete scan result is unavailable, uploads fail closed. The scanner does not download signatures or call an external service when the application starts. Provision signature updates as a separate environment-maintenance step before offline use.
+
+The application creates private staging and accepted-file subdirectories under `Documents:StorageRoot`; neither is served as static content. If the setting is omitted, the application uses its local application-data directory. Do not point the root at `wwwroot`, a shared public folder, or a directory supplied by a browser request.
+
+To check a local scanner installation before starting the application, run `clamscan.exe --version` and scan the standard EICAR test file in a disposable directory. Use only the standard EICAR test string for detection checks; do not use live malware. A missing executable, unusable signatures, timeout, threat result, or ambiguous scanner output must leave the submitted file unavailable.
 
 ## Build and Automated Tests
 
@@ -26,9 +31,9 @@ The test project uses a fake scanner for deterministic upload/security cases and
 
 ## Database Preparation
 
-- **New LocalDB**: apply the EF Core migrations documented by the feature's database setup, then start the app. Verify seed users, projects, tasks, and announcements are present.
-- **Existing `EnsureCreated` LocalDB**: back up the database, compare its schema to the checked-in baseline, run the documented non-destructive baseline-adoption step, and apply the document migration. The app must not automatically drop, recreate, or mark an unverified schema as migrated.
-- **Schema cannot be adopted**: only use the documented reset as an explicit opt-in after confirming the backup and accepting loss of local training data. Restart the app and verify seeded data is recreated.
+- **New LocalDB**: start the app. `DatabaseInitializer` applies the checked-in EF Core migrations and inserts the training seed data. Verify seed users, projects, tasks, and announcements are present.
+- **Existing `EnsureCreated` LocalDB**: back up the database before starting the updated app. Startup checks that the existing dbo table and column inventory matches the checked-in legacy baseline. Only after that check succeeds does it create `__EFMigrationsHistory`, record the baseline migration, and apply the additive document migrations. Existing rows are preserved.
+- **Schema mismatch**: startup does not drop, recreate, or mark the database as migrated. It logs the migration failure and leaves existing tables and data untouched. Stop the app and resolve the schema mismatch against the baseline; any reset must be a separately approved, explicit operator action after a verified backup.
 
 ## Manual End-to-End Scenarios
 

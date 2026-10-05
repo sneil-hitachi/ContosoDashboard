@@ -1,0 +1,271 @@
+@using System.Security.Claims
+@using ContosoDashboard.Models
+@using ContosoDashboard.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDocumentService DocumentService
+@inject IProjectService ProjectService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<section class="document-upload-form" aria-label="Upload documents">
+    <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+        <div>
+            <h2 class="h5 mb-1">Upload documents</h2>
+            <p class="text-muted small mb-0">PDF, Office documents, text, JPEG, and PNG. Maximum 25 MB per file.</p>
+        </div>
+        <InputFile OnChange="HandleFilesSelected" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png" class="form-control" />
+    </div>
+
+    @if (selectedFiles.Count > 0)
+    {
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th scope="col">File and title</th>
+                        <th scope="col">Category</th>
+                        <th scope="col">Description and tags</th>
+                        <th scope="col">Project</th>
+                        <th scope="col">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in selectedFiles)
+                    {
+                        <tr @key="item.Id">
+                            <td>
+                                <div class="fw-semibold text-break">@item.File.Name</div>
+                                <div class="small text-muted">@FormatSize(item.File.Size)</div>
+                                <InputText @bind-Value="item.Title" class="form-control form-control-sm mt-2" aria-label="@($"Title for {item.File.Name}")" maxlength="255" />
+                            </td>
+                            <td>
+                                <InputSelect @bind-Value="item.Category" class="form-select form-select-sm" aria-label="@($"Category for {item.File.Name}")">
+                                    @foreach (var category in ContosoDashboard.Services.DocumentService.Categories)
+                                    {
+                                        <option value="@category">@category</option>
+                                    }
+                                </InputSelect>
+                            </td>
+                            <td>
+                                <InputTextArea @bind-Value="item.Description" class="form-control form-control-sm mb-2" rows="2" aria-label="@($"Description for {item.File.Name}")" maxlength="2000" />
+                                <InputText @bind-Value="item.Tags" class="form-control form-control-sm" aria-label="@($"Tags for {item.File.Name}")" placeholder="Tags, separated by commas" />
+                            </td>
+                            <td>
+                                @if (ProjectId.HasValue)
+                                {
+                                    <span>@projects.FirstOrDefault(project => project.ProjectId == ProjectId.Value)?.Name</span>
+                                }
+                                else
+                                {
+                                    <InputSelect @bind-Value="item.ProjectValue" class="form-select form-select-sm" aria-label="@($"Project for {item.File.Name}")">
+                                        <option value="">No project</option>
+                                        @foreach (var project in projects)
+                                        {
+                                            <option value="@project.ProjectId">@project.Name</option>
+                                        }
+                                    </InputSelect>
+                                }
+                            </td>
+                            <td class="document-upload-status">
+                                @if (item.IsUploading)
+                                {
+                                    <progress class="w-100" max="100" value="@item.Progress">@item.Progress%</progress>
+                                    <span class="small">Uploading @item.Progress%</span>
+                                }
+                                else if (item.Success)
+                                {
+                                    <span class="text-success">Uploaded</span>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(item.Error))
+                                {
+                                    <span class="text-danger">@item.Error</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Ready</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-end">
+            <button type="button" class="btn btn-primary" @onclick="UploadFiles" disabled="@isUploading">
+                Upload selected files
+            </button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public EventCallback OnUploaded { get; set; }
+
+    [Parameter]
+    public int? ProjectId { get; set; }
+
+    private readonly List<SelectedDocumentFile> selectedFiles = [];
+    private IReadOnlyList<Project> projects = [];
+    private ClaimsPrincipal principal = new();
+    private bool isUploading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        principal = state.User;
+        if (int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            projects = await ProjectService.GetUserProjectsAsync(userId);
+        }
+    }
+
+    private void HandleFilesSelected(InputFileChangeEventArgs eventArgs)
+    {
+        foreach (var file in eventArgs.GetMultipleFiles(maximumFileCount: 50))
+        {
+            selectedFiles.Add(new SelectedDocumentFile(file));
+        }
+    }
+
+    private async Task UploadFiles()
+    {
+        if (isUploading)
+        {
+            return;
+        }
+
+        isUploading = true;
+        try
+        {
+            foreach (var item in selectedFiles.Where(file => !file.Success))
+            {
+                item.IsUploading = true;
+                item.Progress = 0;
+                item.Error = null;
+                await InvokeAsync(StateHasChanged);
+
+                try
+                {
+                    await using var fileStream = item.File.OpenReadStream(ContosoDashboard.Services.DocumentService.MaximumFileSizeBytes);
+                    await using var progressStream = new ProgressReadStream(fileStream, bytesRead =>
+                    {
+                        item.Progress = item.File.Size == 0
+                            ? 100
+                            : (int)Math.Min(100, bytesRead * 100 / item.File.Size);
+                        _ = InvokeAsync(StateHasChanged);
+                    });
+
+                    int? projectId = int.TryParse(item.ProjectValue, out var parsedProjectId) ? parsedProjectId : null;
+                    var request = new DocumentUploadRequest
+                    {
+                        OriginalFileName = item.File.Name,
+                        Title = item.Title,
+                        Category = item.Category,
+                        Description = item.Description,
+                        ContentType = item.File.ContentType,
+                        ProjectId = ProjectId ?? projectId,
+                        Tags = item.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                        Content = progressStream
+                    };
+                    var result = (await DocumentService.UploadAsync(principal, [request])).Single();
+                    item.Success = result.Success;
+                    item.Error = result.Error;
+                    if (result.Success)
+                    {
+                        item.Progress = 100;
+                        await OnUploaded.InvokeAsync();
+                    }
+                }
+                catch (Exception exception) when (exception is IOException or InvalidOperationException)
+                {
+                    item.Error = item.File.Size > ContosoDashboard.Services.DocumentService.MaximumFileSizeBytes
+                        ? "The file may not exceed 25 MB."
+                        : "The file could not be read. Select it again and retry.";
+                }
+                finally
+                {
+                    item.IsUploading = false;
+                }
+            }
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        return bytes < 1024 * 1024
+            ? $"{bytes / 1024d:0.#} KB"
+            : $"{bytes / (1024d * 1024d):0.#} MB";
+    }
+
+    private sealed class SelectedDocumentFile(IBrowserFile file)
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public IBrowserFile File { get; } = file;
+        public string Title { get; set; } = Path.GetFileNameWithoutExtension(file.Name);
+        public string Category { get; set; } = "Other";
+        public string? Description { get; set; }
+        public string Tags { get; set; } = string.Empty;
+        public string ProjectValue { get; set; } = string.Empty;
+        public int Progress { get; set; }
+        public bool IsUploading { get; set; }
+        public bool Success { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private sealed class ProgressReadStream(Stream innerStream, Action<long> onProgress) : Stream
+    {
+        private long _bytesRead;
+
+        public override bool CanRead => innerStream.CanRead;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var count = await innerStream.ReadAsync(buffer, cancellationToken);
+            _bytesRead += count;
+            onProgress(_bytesRead);
+            return count;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var bytesRead = innerStream.Read(buffer, offset, count);
+            _bytesRead += bytesRead;
+            onProgress(_bytesRead);
+            return bytesRead;
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                innerStream.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            await innerStream.DisposeAsync();
+            await base.DisposeAsync();
+        }
+    }
+}

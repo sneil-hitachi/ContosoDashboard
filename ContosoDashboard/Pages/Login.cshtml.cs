@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using System.Security.Claims;
 using ContosoDashboard.Services;
 using ContosoDashboard.Models;
 
@@ -53,16 +52,6 @@ namespace ContosoDashboard.Pages
             {
                 Console.WriteLine($"Login POST: Attempting to sign in user {user.DisplayName}");
                 
-                // Create claims for the authenticated user
-                var claims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
-                    new Claim(ClaimTypes.Name, user.DisplayName),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.Role, user.Role.ToString())
-                };
-
-                var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 var authProperties = new AuthenticationProperties
                 {
                     IsPersistent = true,
@@ -71,7 +60,7 @@ namespace ContosoDashboard.Pages
 
                 await HttpContext.SignInAsync(
                     CookieAuthenticationDefaults.AuthenticationScheme,
-                    new ClaimsPrincipal(claimsIdentity),
+                    MockLoginClaims.CreatePrincipal(user),
                     authProperties);
 
                 Console.WriteLine($"Login POST: Sign in successful, redirecting to /");

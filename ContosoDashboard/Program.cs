@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddControllers();
 builder.Services.AddServerSideBlazor();
 
 // Add authentication state provider for Blazor
@@ -26,6 +27,17 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.AccessDeniedPath = "/login";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
+        options.Events.OnRedirectToLogin = context =>
+        {
+            if (IsDocumentContentRequest(context.Request.Path))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     });
 
 // Add authorization
@@ -43,6 +55,12 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.Configure<DocumentStorageOptions>(builder.Configuration.GetSection("Documents"));
+builder.Services.Configure<ClamAvOptions>(builder.Configuration.GetSection("Documents:Scanner"));
+builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddSingleton<IClamAvProcessRunner, ClamAvProcessRunner>();
+builder.Services.AddSingleton<IMalwareScanner, ClamAvMalwareScanner>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 // Add HttpContextAccessor for accessing user claims
 builder.Services.AddHttpContextAccessor();
@@ -56,7 +74,7 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
-        context.Database.EnsureCreated(); // For development - use migrations in production
+        await DatabaseInitializer.InitializeAsync(context);
     }
     catch (Exception ex)
     {
@@ -106,6 +124,13 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapBlazorHub();
+app.MapControllers();
 app.MapFallbackToPage("/_Host");
 
 app.Run();
+
+static bool IsDocumentContentRequest(PathString path)
+{
+    return path.Value?.EndsWith("/download", StringComparison.OrdinalIgnoreCase) == true ||
+           path.Value?.EndsWith("/preview", StringComparison.OrdinalIgnoreCase) == true;
+}

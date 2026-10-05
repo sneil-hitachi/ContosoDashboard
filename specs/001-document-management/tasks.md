@@ -16,18 +16,18 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 **Purpose**: Establish the test harness and repeatable local scanner/storage configuration without changing runtime cloud dependencies.
 
-- [ ] T001 Create the xUnit test project with a reference to the application in `tests/ContosoDashboard.Tests/ContosoDashboard.Tests.csproj`.
-- [ ] T002 [P] Add reusable fake scanner, temporary file storage, authenticated-principal factory, and isolated LocalDB fixture in `tests/ContosoDashboard.Tests/TestInfrastructure/FakeMalwareScanner.cs`, `tests/ContosoDashboard.Tests/TestInfrastructure/TemporaryFileStorage.cs`, `tests/ContosoDashboard.Tests/TestInfrastructure/TestPrincipalFactory.cs`, and `tests/ContosoDashboard.Tests/TestInfrastructure/SqlServerLocalDbFixture.cs`.
-- [ ] T003 [P] Document ClamAV executable/signature setup, local storage configuration, and fail-closed behavior in `specs/001-document-management/quickstart.md`.
+- [X] T001 Create the xUnit test project with a reference to the application in `tests/ContosoDashboard.Tests/ContosoDashboard.Tests.csproj`.
+- [X] T002 [P] Add reusable fake scanner, temporary file storage, authenticated-principal factory, and isolated LocalDB fixture in `tests/ContosoDashboard.Tests/TestInfrastructure/FakeMalwareScanner.cs`, `tests/ContosoDashboard.Tests/TestInfrastructure/TemporaryFileStorage.cs`, `tests/ContosoDashboard.Tests/TestInfrastructure/TestPrincipalFactory.cs`, and `tests/ContosoDashboard.Tests/TestInfrastructure/SqlServerLocalDbFixture.cs`.
+- [X] T003 [P] Document ClamAV executable/signature setup, local storage configuration, and fail-closed behavior in `specs/001-document-management/quickstart.md`.
 
 ## Phase 2: Foundational
 
 **Purpose**: Make schema evolution safe and provide the identity data required by all document authorization rules. Complete before user stories.
 
-- [ ] T004 [P] Add tests for fresh database creation, existing `EnsureCreated` baseline adoption, and preservation of seeded training data in `tests/ContosoDashboard.Tests/Database/MigrationCompatibilityTests.cs`.
-- [ ] T005 Replace startup `EnsureCreated` with EF Core migration initialization and add the verified baseline plus safe adoption procedure in `ContosoDashboard/Program.cs` and `ContosoDashboard/Data/Migrations/`.
-- [ ] T006 [P] Add tests that mock-login principals contain NameIdentifier, Name, Email, Role, and Department claims sourced from the selected persisted user in `tests/ContosoDashboard.Tests/Authentication/MockLoginClaimsTests.cs`.
-- [ ] T007 Add the Department claim to the mock login identity and preserve the existing training authentication flow in `ContosoDashboard/Pages/Login.cshtml.cs`.
+- [X] T004 [P] Add tests for fresh database creation, existing `EnsureCreated` baseline adoption, and preservation of seeded training data in `tests/ContosoDashboard.Tests/Database/MigrationCompatibilityTests.cs`.
+- [X] T005 Replace startup `EnsureCreated` with EF Core migration initialization and add the verified baseline plus safe adoption procedure in `ContosoDashboard/Program.cs` and `ContosoDashboard/Data/Migrations/`.
+- [X] T006 [P] Add tests that mock-login principals contain NameIdentifier, Name, Email, Role, and Department claims sourced from the selected persisted user in `tests/ContosoDashboard.Tests/Authentication/MockLoginClaimsTests.cs`.
+- [X] T007 Add the Department claim to the mock login identity and preserve the existing training authentication flow in `ContosoDashboard/Pages/Login.cshtml.cs`.
 
 **Checkpoint**: Database changes preserve existing LocalDB data, and all document services can derive identity, role, and team scope from the principal.
 
@@ -39,23 +39,23 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Add upload service tests for required title/category, all six category values, supported extensions, 25 MB per-file limit, MIME metadata, and independently reported mixed-batch results in `tests/ContosoDashboard.Tests/Services/DocumentUploadValidationTests.cs`.
-- [ ] T009 [P] [US1] Add malware adapter tests for clean, threat, missing executable/signatures, timeout, nonzero exit, incomplete output, and paths containing spaces in `tests/ContosoDashboard.Tests/Services/ClamAvMalwareScannerTests.cs`.
-- [ ] T010 [P] [US1] Add local storage tests for unique generated paths, staging/final separation, path traversal resistance, cleanup, and storage outside `wwwroot` in `tests/ContosoDashboard.Tests/Services/LocalFileStorageServiceTests.cs`.
-- [ ] T011 [P] [US1] Add upload integration tests proving files are not downloadable or persisted as available before a clean scan and that database failure removes the newly stored file in `tests/ContosoDashboard.Tests/Integration/DocumentUploadIntegrationTests.cs`.
+- [X] T008 [P] [US1] Add upload service tests for required title/category, all six category values, supported extensions, 25 MB per-file limit, MIME metadata, and independently reported mixed-batch results in `tests/ContosoDashboard.Tests/Services/DocumentUploadValidationTests.cs`.
+- [X] T009 [P] [US1] Add malware adapter tests for clean, threat, missing executable/signatures, timeout, nonzero exit, incomplete output, and paths containing spaces in `tests/ContosoDashboard.Tests/Services/ClamAvMalwareScannerTests.cs`.
+- [X] T010 [P] [US1] Add local storage tests for unique generated paths, staging/final separation, path traversal resistance, cleanup, and storage outside `wwwroot` in `tests/ContosoDashboard.Tests/Services/LocalFileStorageServiceTests.cs`.
+- [X] T011 [P] [US1] Add upload integration tests proving files are not downloadable or persisted as available before a clean scan and that database failure removes the newly stored file in `tests/ContosoDashboard.Tests/Integration/DocumentUploadIntegrationTests.cs`.
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create the integer-keyed document metadata entity with required title/category, 255-character file type, generated relative path, file size, uploader, upload time, and optional project in `ContosoDashboard/Models/Document.cs`.
-- [ ] T013 [US1] Configure the Document entity's User/Project relationships and query/unique indexes in `ContosoDashboard/Data/ApplicationDbContext.cs`.
-- [ ] T014 [P] [US1] Define fail-closed malware scan results and the scanner abstraction in `ContosoDashboard/Services/IMalwareScanner.cs`.
-- [ ] T015 [P] [US1] Implement the local ClamAV process adapter using argument-list invocation, bounded execution, and unambiguous clean-result parsing in `ContosoDashboard/Services/ClamAvMalwareScanner.cs`.
-- [ ] T016 [P] [US1] Define local file upload, delete, download, and relative-key operations in `ContosoDashboard/Services/IFileStorageService.cs`.
-- [ ] T017 [P] [US1] Implement private staging and final local file operations under a configurable root outside `wwwroot`, using server-generated GUID names in `ContosoDashboard/Services/LocalFileStorageService.cs`.
-- [ ] T018 [US1] Implement authenticated-principal authorization, metadata/type/size validation, scan-before-publish ordering, per-file result handling, and compensation on persistence failure in `ContosoDashboard/Services/DocumentService.cs`.
-- [ ] T019 [US1] Register document, local storage, and local scanner services and bind local-only settings in `ContosoDashboard/Program.cs` and `ContosoDashboard/appsettings.Development.json`.
-- [ ] T020 [US1] Create the keyed Blazor upload form with per-file title/category/optional metadata, stream-copy handling, upload progress, and independent success/error results in `ContosoDashboard/Shared/DocumentUploadForm.razor`.
-- [ ] T021 [US1] Add the authenticated `/documents` page's basic owner-only accepted-document list and upload entry point in `ContosoDashboard/Pages/Documents.razor`.
+- [X] T012 [P] [US1] Create the integer-keyed document metadata entity with required title/category, 255-character file type, generated relative path, file size, uploader, upload time, and optional project in `ContosoDashboard/Models/Document.cs`.
+- [X] T013 [US1] Configure the Document entity's User/Project relationships and query/unique indexes in `ContosoDashboard/Data/ApplicationDbContext.cs`.
+- [X] T014 [P] [US1] Define fail-closed malware scan results and the scanner abstraction in `ContosoDashboard/Services/IMalwareScanner.cs`.
+- [X] T015 [P] [US1] Implement the local ClamAV process adapter using argument-list invocation, bounded execution, and unambiguous clean-result parsing in `ContosoDashboard/Services/ClamAvMalwareScanner.cs`.
+- [X] T016 [P] [US1] Define local file upload, delete, download, and relative-key operations in `ContosoDashboard/Services/IFileStorageService.cs`.
+- [X] T017 [P] [US1] Implement private staging and final local file operations under a configurable root outside `wwwroot`, using server-generated GUID names in `ContosoDashboard/Services/LocalFileStorageService.cs`.
+- [X] T018 [US1] Implement authenticated-principal authorization, metadata/type/size validation, scan-before-publish ordering, per-file result handling, and compensation on persistence failure in `ContosoDashboard/Services/DocumentService.cs`.
+- [X] T019 [US1] Register document, local storage, and local scanner services and bind local-only settings in `ContosoDashboard/Program.cs` and `ContosoDashboard/appsettings.Development.json`.
+- [X] T020 [US1] Create the keyed Blazor upload form with per-file title/category/optional metadata, stream-copy handling, upload progress, and independent success/error results in `ContosoDashboard/Shared/DocumentUploadForm.razor`.
+- [X] T021 [US1] Add the authenticated `/documents` page's basic owner-only accepted-document list and upload entry point in `ContosoDashboard/Pages/Documents.razor`.
 
 **Checkpoint**: User Story 1 can upload a clean supported file, show it to its owner, and reject every unsafe or indeterminate scan result without exposing staged content.
 
@@ -67,17 +67,17 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 ### Tests for User Story 2
 
-- [ ] T022 [P] [US2] Add list/search tests for title, description, tags, uploader, project, category/date/project filters, allowed sort keys, and result scoping in `tests/ContosoDashboard.Tests/Services/DocumentQueryAuthorizationTests.cs`.
-- [ ] T023 [P] [US2] Add authenticated content endpoint tests for authorized PDF/image preview, attachment download, unsupported preview types, inaccessible IDs, and anonymous requests in `tests/ContosoDashboard.Tests/Integration/DocumentContentAuthorizationTests.cs`.
-- [ ] T024 [P] [US2] Add project access tests for members, managers, removed members, and Personal Files privacy in `tests/ContosoDashboard.Tests/Integration/ProjectDocumentAuthorizationTests.cs`.
+- [X] T022 [P] [US2] Add list/search tests for title, description, tags, uploader, project, category/date/project filters, allowed sort keys, and result scoping in `tests/ContosoDashboard.Tests/Services/DocumentQueryAuthorizationTests.cs`.
+- [X] T023 [P] [US2] Add authenticated content endpoint tests for authorized PDF/image preview, attachment download, unsupported preview types, inaccessible IDs, and anonymous requests in `tests/ContosoDashboard.Tests/Integration/DocumentContentAuthorizationTests.cs`.
+- [X] T024 [P] [US2] Add project access tests for members, managers, removed members, and Personal Files privacy in `tests/ContosoDashboard.Tests/Integration/ProjectDocumentAuthorizationTests.cs`.
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Implement owner/project/share-scoped query, search, filter, and allowlisted sorting operations in `ContosoDashboard/Services/DocumentService.cs`.
-- [ ] T026 [US2] Implement authenticated preview/download routes that reauthorize each request, conceal inaccessible document existence, set safe content headers, and stream only accepted files in `ContosoDashboard/Controllers/DocumentsController.cs`.
-- [ ] T027 [US2] Complete My Documents and Shared with Me tables with required metadata, filters, sort controls, and search fields in `ContosoDashboard/Pages/Documents.razor`.
-- [ ] T028 [US2] Add authorized project-document listing and manager-only project upload/manage entry points in `ContosoDashboard/Pages/ProjectDetails.razor`.
-- [ ] T029 [US2] Register controller routing and require authentication for document content routes in `ContosoDashboard/Program.cs`.
+- [X] T025 [US2] Implement owner/project/share-scoped query, search, filter, and allowlisted sorting operations in `ContosoDashboard/Services/DocumentService.cs`.
+- [X] T026 [US2] Implement authenticated preview/download routes that reauthorize each request, conceal inaccessible document existence, set safe content headers, and stream only accepted files in `ContosoDashboard/Controllers/DocumentsController.cs`.
+- [X] T027 [US2] Complete My Documents and Shared with Me tables with required metadata, filters, sort controls, and search fields in `ContosoDashboard/Pages/Documents.razor`.
+- [X] T028 [US2] Add authorized project-document listing and manager-only project upload/manage entry points in `ContosoDashboard/Pages/ProjectDetails.razor`.
+- [X] T029 [US2] Register controller routing and require authentication for document content routes in `ContosoDashboard/Program.cs`.
 
 **Checkpoint**: User Story 2 returns only authorized metadata and streams only accepted content after fresh service-layer authorization.
 

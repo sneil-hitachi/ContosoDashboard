@@ -25,6 +25,19 @@ public class ProjectService : IProjectService
 
     public async Task<List<Project>> GetUserProjectsAsync(int userId)
     {
+        var isAdministrator = await _context.Users
+            .AnyAsync(user => user.UserId == userId && user.Role == UserRole.Administrator);
+        if (isAdministrator)
+        {
+            return await _context.Projects
+                .Include(project => project.ProjectManager)
+                .Include(project => project.Tasks)
+                .Include(project => project.ProjectMembers)
+                .ThenInclude(member => member.User)
+                .OrderByDescending(project => project.CreatedDate)
+                .ToListAsync();
+        }
+
         // Get projects where user is manager or a member
         var managedProjects = _context.Projects
             .Where(p => p.ProjectManagerId == userId);
@@ -59,8 +72,10 @@ public class ProjectService : IProjectService
         // Authorization: User must be project manager or a project member
         var isProjectManager = project.ProjectManagerId == requestingUserId;
         var isProjectMember = project.ProjectMembers.Any(pm => pm.UserId == requestingUserId);
+        var isAdministrator = await _context.Users
+            .AnyAsync(user => user.UserId == requestingUserId && user.Role == UserRole.Administrator);
 
-        if (!isProjectManager && !isProjectMember)
+        if (!isProjectManager && !isProjectMember && !isAdministrator)
         {
             return null; // User not authorized to view this project
         }
