@@ -106,6 +106,9 @@
     public int? ProjectId { get; set; }
 
     [Parameter]
+    public int? TaskId { get; set; }
+
+    [Parameter]
     public IReadOnlyList<Project>? AvailableProjects { get; set; }
 
     private readonly List<SelectedDocumentFile> selectedFiles = [];
@@ -172,6 +175,7 @@
                         Description = item.Description,
                         ContentType = item.File.ContentType,
                         ProjectId = ProjectId ?? projectId,
+                        TaskId = TaskId,
                         Tags = item.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                         Content = progressStream
                     };

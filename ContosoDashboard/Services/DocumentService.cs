@@ -14,6 +14,7 @@ public sealed record DocumentUploadRequest
     public string? Description { get; init; }
     public string? ContentType { get; init; }
     public int? ProjectId { get; init; }
+    public int? TaskId { get; init; }
     public IReadOnlyCollection<string> Tags { get; init; } = [];
     public Stream Content { get; init; } = Stream.Null;
 }
@@ -44,6 +45,27 @@ public sealed record DocumentContentAccessResult(
     string? ContentType = null,
     string? FileName = null);
 
+public sealed record DocumentMetadataUpdateRequest(
+    string Title,
+    string Category,
+    string? Description,
+    int? ProjectId,
+    IReadOnlyCollection<string> Tags);
+
+public sealed record DocumentManagementResult(bool Success, string? Error = null);
+
+public sealed record DocumentShareGrantRequest(int? RecipientUserId = null, string? RecipientDepartment = null);
+
+public sealed record DocumentShareResult(bool Success, string? Error = null, int? ShareId = null);
+
+public sealed record DocumentFileTypeReport(string FileType, int Count);
+public sealed record DocumentUploaderReport(int UserId, string UserName, int UploadCount);
+public sealed record DocumentActionReport(string Action, int Count);
+public sealed record DocumentReportSummary(
+    IReadOnlyList<DocumentFileTypeReport> FileTypes,
+    IReadOnlyList<DocumentUploaderReport> Uploaders,
+    IReadOnlyList<DocumentActionReport> AccessPatterns);
+
 public interface IDocumentService
 {
     Task<IReadOnlyList<DocumentUploadResult>> UploadAsync(
@@ -64,6 +86,51 @@ public interface IDocumentService
         ClaimsPrincipal principal,
         int documentId,
         bool preview,
+        CancellationToken cancellationToken = default);
+    Task<DocumentManagementResult> UpdateMetadataAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        DocumentMetadataUpdateRequest request,
+        CancellationToken cancellationToken = default);
+    Task<DocumentManagementResult> ReplaceFileAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        DocumentUploadRequest replacement,
+        CancellationToken cancellationToken = default);
+    Task<DocumentShareResult> CreateShareAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        DocumentShareGrantRequest request,
+        CancellationToken cancellationToken = default);
+    Task<bool> RevokeShareAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        int shareId,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<DocumentShare>> GetDocumentSharesAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        CancellationToken cancellationToken = default);
+    Task<DocumentManagementResult> DeleteAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        bool confirmed,
+        CancellationToken cancellationToken = default);
+    Task<bool> AttachToTaskAsync(
+        ClaimsPrincipal principal,
+        int taskId,
+        int documentId,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Document>> GetTaskDocumentsAsync(
+        ClaimsPrincipal principal,
+        int taskId,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<DocumentActivity>> GetActivityAsync(
+        ClaimsPrincipal principal,
+        int take = 100,
+        CancellationToken cancellationToken = default);
+    Task<DocumentReportSummary?> GetReportAsync(
+        ClaimsPrincipal principal,
         CancellationToken cancellationToken = default);
 }
 
@@ -99,15 +166,18 @@ public sealed class DocumentService : IDocumentService
     private readonly ApplicationDbContext _context;
     private readonly IFileStorageService _fileStorage;
     private readonly IMalwareScanner _malwareScanner;
+    private readonly INotificationService? _notificationService;
 
     public DocumentService(
         ApplicationDbContext context,
         IFileStorageService fileStorage,
-        IMalwareScanner malwareScanner)
+        IMalwareScanner malwareScanner,
+        INotificationService? notificationService = null)
     {
         _context = context;
         _fileStorage = fileStorage;
         _malwareScanner = malwareScanner;
+        _notificationService = notificationService;
     }
 
     public async Task<IReadOnlyList<DocumentUploadResult>> UploadAsync(
@@ -264,7 +334,347 @@ public sealed class DocumentService : IDocumentService
             return new DocumentContentAccessResult(false, false);
         }
 
+        if (!preview)
+        {
+            var actor = await GetActorAsync(principal, cancellationToken);
+            if (actor is not null)
+            {
+                await RecordActivityAsync(document, actor, "Downloaded", cancellationToken);
+            }
+        }
+
         return new DocumentContentAccessResult(true, previewSupported, content, document.FileType, document.OriginalFileName);
+    }
+
+    public async Task<DocumentManagementResult> UpdateMetadataAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        DocumentMetadataUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        var document = await _context.Documents
+            .Include(item => item.Project)
+            .Include(item => item.Uploader)
+            .Include(item => item.Tags)
+            .SingleOrDefaultAsync(item => item.DocumentId == documentId, cancellationToken);
+        if (actor is null || document is null || !CanManageDocument(actor, document))
+        {
+            return new DocumentManagementResult(false, "You are not authorized to manage this document.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title) || request.Title.Trim().Length > 255 ||
+            !Categories.Contains(request.Category, StringComparer.Ordinal) ||
+            (!string.IsNullOrWhiteSpace(request.Description) && request.Description.Trim().Length > 2000) ||
+            request.Tags.Any(tag => tag.Trim().Length > 100) ||
+            (request.Category == "Personal Files" &&
+             (request.ProjectId.HasValue || await _context.TaskDocuments.AnyAsync(link => link.DocumentId == documentId, cancellationToken))))
+        {
+            return new DocumentManagementResult(false, "One or more document details are invalid.");
+        }
+
+        if (request.ProjectId.HasValue)
+        {
+            var canUseProject = await _context.Projects.AnyAsync(project =>
+                project.ProjectId == request.ProjectId.Value &&
+                (project.ProjectManagerId == actor.UserId ||
+                 project.ProjectMembers.Any(member => member.UserId == actor.UserId) ||
+                 actor.Role == UserRole.Administrator), cancellationToken);
+            if (!canUseProject)
+            {
+                return new DocumentManagementResult(false, "You do not have access to the selected project.");
+            }
+        }
+
+        document.Title = request.Title.Trim();
+        document.Category = request.Category;
+        document.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        document.ProjectId = request.ProjectId;
+        _context.DocumentTags.RemoveRange(document.Tags);
+        foreach (var tag in NormalizeTags(request.Tags))
+        {
+            document.Tags.Add(tag);
+        }
+
+        _context.DocumentActivities.Add(CreateActivity(document.DocumentId, document.Title, actor, "MetadataUpdated"));
+        await _context.SaveChangesAsync(cancellationToken);
+        return new DocumentManagementResult(true);
+    }
+
+    public async Task<DocumentManagementResult> ReplaceFileAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        DocumentUploadRequest replacement,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        var document = await _context.Documents
+            .Include(item => item.Project)
+            .Include(item => item.Uploader)
+            .SingleOrDefaultAsync(item => item.DocumentId == documentId, cancellationToken);
+        if (actor is null || document is null || !CanManageDocument(actor, document))
+        {
+            return new DocumentManagementResult(false, "You are not authorized to manage this document.");
+        }
+
+        var validationRequest = replacement with
+        {
+            Title = document.Title,
+            Category = document.Category,
+            ProjectId = null
+        };
+        var validationError = await ValidateAsync(validationRequest, actor, cancellationToken);
+        if (validationError is not null)
+        {
+            return new DocumentManagementResult(false, validationError);
+        }
+
+        StagedFile? stagedFile = null;
+        string? replacementKey = null;
+        var previousKey = document.FilePath;
+        try
+        {
+            stagedFile = await _fileStorage.StageAsync(replacement.Content, MaximumFileSizeBytes, cancellationToken);
+            var scanResult = await _malwareScanner.ScanAsync(stagedFile.PhysicalPath, cancellationToken);
+            if (scanResult.Status != MalwareScanStatus.Clean)
+            {
+                return new DocumentManagementResult(false, scanResult.Status == MalwareScanStatus.ThreatDetected
+                    ? "The replacement was rejected because malware was detected."
+                    : "The replacement could not be cleared by the malware scanner.");
+            }
+
+            var extension = Path.GetExtension(Path.GetFileName(replacement.OriginalFileName));
+            var replacementSize = stagedFile.Length;
+            replacementKey = await _fileStorage.PublishAsync(stagedFile, extension, cancellationToken);
+            stagedFile = null;
+            document.FilePath = replacementKey;
+            document.FileSize = replacementSize;
+            document.FileType = SupportedTypes[extension];
+            document.OriginalFileName = Path.GetFileName(replacement.OriginalFileName);
+            _context.DocumentActivities.Add(CreateActivity(document.DocumentId, document.Title, actor, "Replaced"));
+            await _context.SaveChangesAsync(cancellationToken);
+            replacementKey = null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            _context.ChangeTracker.Clear();
+            return new DocumentManagementResult(false, "The replacement could not be completed. The existing file was retained.");
+        }
+        finally
+        {
+            if (stagedFile is not null)
+            {
+                await _fileStorage.DeleteAsync(stagedFile.Key, CancellationToken.None);
+            }
+
+            if (replacementKey is not null)
+            {
+                await _fileStorage.DeleteAsync(replacementKey, CancellationToken.None);
+            }
+        }
+
+        await _fileStorage.DeleteAsync(previousKey, CancellationToken.None);
+        return new DocumentManagementResult(true);
+    }
+
+    public async Task<DocumentShareResult> CreateShareAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        DocumentShareGrantRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        var document = await _context.Documents
+            .SingleOrDefaultAsync(item => item.DocumentId == documentId, cancellationToken);
+        if (actor is null || document is null || document.UploadedByUserId != actor.UserId)
+        {
+            return new DocumentShareResult(false, "Only the document owner can manage shares.");
+        }
+
+        var department = request.RecipientDepartment?.Trim();
+        if ((request.RecipientUserId.HasValue == !string.IsNullOrWhiteSpace(department)) ||
+            (department?.Length > 100))
+        {
+            return new DocumentShareResult(false, "Select exactly one valid user or department recipient.");
+        }
+
+        if (request.RecipientUserId.HasValue &&
+            !await _context.Users.AnyAsync(user => user.UserId == request.RecipientUserId.Value, cancellationToken))
+        {
+            return new DocumentShareResult(false, "The selected recipient is unavailable.");
+        }
+
+        var duplicate = await _context.DocumentShares.AnyAsync(share =>
+            share.DocumentId == documentId &&
+            (request.RecipientUserId.HasValue
+                ? share.RecipientUserId == request.RecipientUserId.Value
+                : share.RecipientDepartment == department), cancellationToken);
+        if (duplicate)
+        {
+            return new DocumentShareResult(false, "This recipient already has access.");
+        }
+
+        var share = new DocumentShare
+        {
+            DocumentId = documentId,
+            GrantedByUserId = actor.UserId,
+            RecipientUserId = request.RecipientUserId,
+            RecipientDepartment = request.RecipientUserId.HasValue ? null : department,
+            GrantedAtUtc = DateTime.UtcNow
+        };
+        _context.DocumentShares.Add(share);
+        _context.DocumentActivities.Add(CreateActivity(document.DocumentId, document.Title, actor, "Shared"));
+        await _context.SaveChangesAsync(cancellationToken);
+
+        if (_notificationService is not null)
+        {
+            var recipients = await _context.Users
+                .Where(user => user.InAppNotificationsEnabled &&
+                    (request.RecipientUserId.HasValue
+                        ? user.UserId == request.RecipientUserId.Value
+                        : user.Department == department))
+                .Select(user => user.UserId)
+                .ToListAsync(cancellationToken);
+            foreach (var recipientId in recipients)
+            {
+                await _notificationService.CreateNotificationAsync(new Notification
+                {
+                    UserId = recipientId,
+                    Title = "A document was shared with you",
+                    Message = $"{actor.DisplayName} shared '{document.Title}' with you.",
+                    Type = NotificationType.DocumentShared,
+                    Priority = NotificationPriority.Informational
+                });
+            }
+        }
+
+        return new DocumentShareResult(true, ShareId: share.DocumentShareId);
+    }
+
+    public async Task<bool> RevokeShareAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        int shareId,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        var share = await _context.DocumentShares
+            .Include(item => item.Document)
+            .SingleOrDefaultAsync(item => item.DocumentShareId == shareId && item.DocumentId == documentId, cancellationToken);
+        if (actor is null || share?.Document.UploadedByUserId != actor.UserId)
+        {
+            return false;
+        }
+
+        _context.DocumentActivities.Add(CreateActivity(share.DocumentId, share.Document.Title, actor, "ShareRevoked"));
+        _context.DocumentShares.Remove(share);
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<DocumentShare>> GetDocumentSharesAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        if (actor is null || !await _context.Documents.AnyAsync(document =>
+                document.DocumentId == documentId && document.UploadedByUserId == actor.UserId, cancellationToken))
+        {
+            return [];
+        }
+
+        return await _context.DocumentShares
+            .Where(share => share.DocumentId == documentId)
+            .OrderBy(share => share.GrantedAtUtc)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<DocumentManagementResult> DeleteAsync(
+        ClaimsPrincipal principal,
+        int documentId,
+        bool confirmed,
+        CancellationToken cancellationToken = default)
+    {
+        if (!confirmed)
+        {
+            return new DocumentManagementResult(false, "Confirm deletion before removing this document.");
+        }
+
+        var actor = await GetActorAsync(principal, cancellationToken);
+        var document = await _context.Documents
+            .Include(item => item.Project)
+            .Include(item => item.Uploader)
+            .SingleOrDefaultAsync(item => item.DocumentId == documentId, cancellationToken);
+        if (actor is null || document is null || !CanManageDocument(actor, document))
+        {
+            return new DocumentManagementResult(false, "You are not authorized to delete this document.");
+        }
+
+        var filePath = document.FilePath;
+        _context.DocumentActivities.Add(CreateActivity(document.DocumentId, document.Title, actor, "Deleted"));
+        _context.Documents.Remove(document);
+        await _context.SaveChangesAsync(cancellationToken);
+        await _fileStorage.DeleteAsync(filePath, cancellationToken);
+        return new DocumentManagementResult(true);
+    }
+
+    public async Task<IReadOnlyList<DocumentActivity>> GetActivityAsync(
+        ClaimsPrincipal principal,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        if (actor?.Role != UserRole.Administrator)
+        {
+            return [];
+        }
+
+        return await _context.DocumentActivities
+            .AsNoTracking()
+            .OrderByDescending(activity => activity.OccurredAtUtc)
+            .ThenByDescending(activity => activity.DocumentActivityId)
+            .Take(Math.Clamp(take, 1, 500))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<DocumentReportSummary?> GetReportAsync(
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        if (actor?.Role != UserRole.Administrator)
+        {
+            return null;
+        }
+
+        var fileTypeRows = await _context.Documents
+            .GroupBy(document => document.FileType)
+            .Select(group => new { FileType = group.Key, Count = group.Count() })
+            .OrderByDescending(item => item.Count)
+            .ToListAsync(cancellationToken);
+        var uploaderRows = await _context.Documents
+            .GroupBy(document => document.UploadedByUserId)
+            .Select(group => new { UserId = group.Key, UploadCount = group.Count() })
+            .Join(_context.Users, item => item.UserId, user => user.UserId,
+                (item, user) => new { user.UserId, UserName = user.DisplayName, item.UploadCount })
+            .OrderByDescending(item => item.UploadCount)
+            .ToListAsync(cancellationToken);
+        var actionRows = await _context.DocumentActivities
+            .GroupBy(activity => activity.Action)
+            .Select(group => new { Action = group.Key, Count = group.Count() })
+            .OrderByDescending(item => item.Count)
+            .ToListAsync(cancellationToken);
+
+        return new DocumentReportSummary(
+            fileTypeRows.Select(item => new DocumentFileTypeReport(item.FileType, item.Count)).ToList(),
+            uploaderRows.Select(item => new DocumentUploaderReport(item.UserId, item.UserName, item.UploadCount)).ToList(),
+            actionRows.Select(item => new DocumentActionReport(item.Action, item.Count)).ToList());
     }
 
     private async Task<DocumentUploadResult> UploadOneAsync(
@@ -293,6 +703,10 @@ public sealed class DocumentService : IDocumentService
         {
             return Failed(upload, validationError);
         }
+
+        var task = upload.TaskId.HasValue
+            ? await GetAuthorizedTaskAsync(actor, upload.TaskId.Value, cancellationToken)
+            : null;
 
         StagedFile? stagedFile = null;
         string? publishedKey = null;
@@ -323,7 +737,7 @@ public sealed class DocumentService : IDocumentService
                 FileType = SupportedTypes[extension],
                 UploadedAtUtc = DateTime.UtcNow,
                 UploadedByUserId = actor.UserId,
-                ProjectId = upload.ProjectId
+                ProjectId = task?.ProjectId ?? upload.ProjectId
             };
 
             foreach (var tag in NormalizeTags(upload.Tags))
@@ -331,8 +745,25 @@ public sealed class DocumentService : IDocumentService
                 document.Tags.Add(tag);
             }
 
+            await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
             _context.Documents.Add(document);
+            if (task is not null)
+            {
+                _context.TaskDocuments.Add(new TaskDocument
+                {
+                    Task = task,
+                    Document = document,
+                    AttachedByUserId = actor.UserId,
+                    AttachedAtUtc = DateTime.UtcNow
+                });
+            }
             await _context.SaveChangesAsync(cancellationToken);
+            await RecordActivityAsync(document, actor, "Uploaded", cancellationToken);
+            if (document.ProjectId.HasValue)
+            {
+                await NotifyProjectMembersAsync(document, actor, cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
             publishedKey = null;
             return new DocumentUploadResult(upload.OriginalFileName, true, DocumentId: document.DocumentId);
         }
@@ -361,6 +792,63 @@ public sealed class DocumentService : IDocumentService
                 await _fileStorage.DeleteAsync(publishedKey, CancellationToken.None);
             }
         }
+    }
+
+    public async Task<bool> AttachToTaskAsync(
+        ClaimsPrincipal principal,
+        int taskId,
+        int documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        if (actor is null)
+        {
+            return false;
+        }
+
+        var task = await GetAuthorizedTaskAsync(actor, taskId, cancellationToken);
+        if (task is null)
+        {
+            return false;
+        }
+
+        var document = await BuildAuthorizedQuery(actor)
+            .SingleOrDefaultAsync(item => item.DocumentId == documentId, cancellationToken);
+        if (document is null || document.ProjectId != task.ProjectId ||
+            await _context.TaskDocuments.AnyAsync(attachment => attachment.TaskId == taskId && attachment.DocumentId == documentId, cancellationToken))
+        {
+            return false;
+        }
+
+        _context.TaskDocuments.Add(new TaskDocument
+        {
+            TaskId = taskId,
+            DocumentId = documentId,
+            AttachedByUserId = actor.UserId,
+            AttachedAtUtc = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<Document>> GetTaskDocumentsAsync(
+        ClaimsPrincipal principal,
+        int taskId,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await GetActorAsync(principal, cancellationToken);
+        if (actor is null || await GetAuthorizedTaskAsync(actor, taskId, cancellationToken) is null)
+        {
+            return [];
+        }
+
+        return await BuildAuthorizedQuery(actor)
+            .Where(document => document.TaskDocuments.Any(attachment => attachment.TaskId == taskId))
+            .Include(document => document.Project)
+            .Include(document => document.Uploader)
+            .AsNoTracking()
+            .OrderBy(document => document.Title)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task<string?> ValidateAsync(
@@ -405,15 +893,26 @@ public sealed class DocumentService : IDocumentService
             return "Each tag may not exceed 100 characters.";
         }
 
-        if (upload.Category == "Personal Files" && upload.ProjectId.HasValue)
+        if (upload.Category == "Personal Files" && (upload.ProjectId.HasValue || upload.TaskId.HasValue))
         {
-            return "Personal Files cannot be associated with a project.";
+            return "Personal Files cannot be associated with a project or task.";
         }
 
-        if (upload.ProjectId.HasValue)
+        TaskItem? task = null;
+        if (upload.TaskId.HasValue)
+        {
+            task = await GetAuthorizedTaskAsync(actor, upload.TaskId.Value, cancellationToken);
+            if (task is null || (upload.ProjectId.HasValue && upload.ProjectId != task.ProjectId))
+            {
+                return "You do not have access to the selected task or its project does not match.";
+            }
+        }
+
+        var projectId = task?.ProjectId ?? upload.ProjectId;
+        if (projectId.HasValue)
         {
             var canUseProject = await _context.Projects.AnyAsync(project =>
-                project.ProjectId == upload.ProjectId.Value &&
+                project.ProjectId == projectId.Value &&
                 (project.ProjectManagerId == actor.UserId ||
                  project.ProjectMembers.Any(member => member.UserId == actor.UserId) ||
                  actor.Role == UserRole.Administrator), cancellationToken);
@@ -424,6 +923,50 @@ public sealed class DocumentService : IDocumentService
         }
 
         return null;
+    }
+
+    private async Task<TaskItem?> GetAuthorizedTaskAsync(User actor, int taskId, CancellationToken cancellationToken)
+    {
+        var task = await _context.Tasks
+            .Include(item => item.Project)
+            .ThenInclude(project => project!.ProjectMembers)
+            .SingleOrDefaultAsync(item => item.TaskId == taskId, cancellationToken);
+        if (task is null)
+        {
+            return null;
+        }
+
+        var allowed = actor.Role == UserRole.Administrator ||
+                      task.AssignedUserId == actor.UserId ||
+                      task.CreatedByUserId == actor.UserId ||
+                      task.Project?.ProjectManagerId == actor.UserId ||
+                      task.Project?.ProjectMembers.Any(member => member.UserId == actor.UserId) == true;
+        return allowed ? task : null;
+    }
+
+    private async Task NotifyProjectMembersAsync(Document document, User actor, CancellationToken cancellationToken)
+    {
+        if (_notificationService is null || !document.ProjectId.HasValue)
+        {
+            return;
+        }
+
+        var recipients = await _context.ProjectMembers
+            .Where(member => member.ProjectId == document.ProjectId.Value && member.UserId != actor.UserId)
+            .Select(member => member.UserId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        foreach (var recipientId in recipients)
+        {
+            await _notificationService.CreateNotificationAsync(new Notification
+            {
+                UserId = recipientId,
+                Title = "New project document",
+                Message = $"{actor.DisplayName} uploaded '{document.Title}'.",
+                Type = NotificationType.ProjectUpdate,
+                Priority = NotificationPriority.Informational
+            });
+        }
     }
 
     private async Task<User?> GetActorAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
@@ -451,6 +994,15 @@ public sealed class DocumentService : IDocumentService
               (actor.Role == UserRole.TeamLead && actor.Department != null && document.Uploader.Department == actor.Department))));
     }
 
+    private static bool CanManageDocument(User actor, Document document)
+    {
+        return actor.Role == UserRole.Administrator ||
+               actor.UserId == document.UploadedByUserId ||
+               (document.Category != "Personal Files" &&
+                ((document.Project?.ProjectManagerId == actor.UserId) ||
+                 (actor.Role == UserRole.TeamLead && actor.Department != null && document.Uploader.Department == actor.Department)));
+    }
+
     private static IEnumerable<DocumentTag> NormalizeTags(IEnumerable<string> tags)
     {
         return tags
@@ -462,6 +1014,25 @@ public sealed class DocumentService : IDocumentService
                 Value = value,
                 NormalizedValue = value.Normalize(NormalizationForm.FormKC).ToUpperInvariant()
             });
+    }
+
+    private async Task RecordActivityAsync(Document document, User actor, string action, CancellationToken cancellationToken)
+    {
+        _context.DocumentActivities.Add(CreateActivity(document.DocumentId, document.Title, actor, action));
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static DocumentActivity CreateActivity(int? documentId, string title, User actor, string action)
+    {
+        return new DocumentActivity
+        {
+            DocumentId = documentId,
+            DocumentTitleSnapshot = title,
+            ActorUserId = actor.UserId,
+            ActorNameSnapshot = actor.DisplayName,
+            Action = action,
+            OccurredAtUtc = DateTime.UtcNow
+        };
     }
 
     private static bool TryGetUserId(ClaimsPrincipal principal, out int userId)

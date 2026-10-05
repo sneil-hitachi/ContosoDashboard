@@ -89,17 +89,17 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] Add owner/manager/admin authorization tests for metadata edits, replacement, and rejected replacement preserving the current accepted file in `tests/ContosoDashboard.Tests/Services/DocumentManagementAuthorizationTests.cs`.
-- [ ] T031 [P] [US3] Add sharing tests for user/team grants, duplicate grants, Personal Files, revoked access, and denied non-owner sharing in `tests/ContosoDashboard.Tests/Services/DocumentSharingTests.cs`.
-- [ ] T032 [P] [US3] Add deletion tests for confirmation, cancellation, owner/project-manager/admin scope, permanent content removal, and denied unauthorized deletion in `tests/ContosoDashboard.Tests/Integration/DocumentDeletionTests.cs`.
+- [X] T030 [P] [US3] Add owner/manager/admin authorization tests for metadata edits, replacement, and rejected replacement preserving the current accepted file in `tests/ContosoDashboard.Tests/Services/DocumentManagementAuthorizationTests.cs`.
+- [X] T031 [P] [US3] Add sharing tests for user/team grants, duplicate grants, Personal Files, revoked access, and denied non-owner sharing in `tests/ContosoDashboard.Tests/Services/DocumentSharingTests.cs`.
+- [X] T032 [P] [US3] Add deletion tests for confirmation, cancellation, owner/project-manager/admin scope, permanent content removal, and denied unauthorized deletion in `tests/ContosoDashboard.Tests/Integration/DocumentDeletionTests.cs`.
 
 ### Implementation for User Story 3
 
-- [ ] T033 [P] [US3] Create share records with exactly one user or department recipient and persisted grant metadata in `ContosoDashboard/Models/DocumentShare.cs`.
-- [ ] T034 [US3] Configure share relationships, uniqueness constraints, and document-delete cascade behavior in `ContosoDashboard/Data/ApplicationDbContext.cs`.
-- [ ] T035 [US3] Implement metadata editing, staged-and-scanned replacement that preserves the old file on failure, confirmed permanent deletion, and owner/manager/admin checks in `ContosoDashboard/Services/DocumentService.cs`.
-- [ ] T036 [US3] Implement recipient selection, share creation/revocation, and in-app notifications through the existing notification service in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/NotificationService.cs`.
-- [ ] T037 [US3] Add metadata edit, replace, share, revoke, and confirm-delete controls with actionable validation results in `ContosoDashboard/Pages/Documents.razor`.
+- [X] T033 [P] [US3] Create share records with exactly one user or department recipient and persisted grant metadata in `ContosoDashboard/Models/DocumentShare.cs`.
+- [X] T034 [US3] Configure share relationships, uniqueness constraints, and document-delete cascade behavior in `ContosoDashboard/Data/ApplicationDbContext.cs`.
+- [X] T035 [US3] Implement metadata editing, staged-and-scanned replacement that preserves the old file on failure, confirmed permanent deletion, and owner/manager/admin checks in `ContosoDashboard/Services/DocumentService.cs`.
+- [X] T036 [US3] Implement recipient selection, share creation/revocation, and in-app notifications through the existing notification service in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/NotificationService.cs`.
+- [X] T037 [US3] Add metadata edit, replace, share, revoke, and confirm-delete controls with actionable validation results in `ContosoDashboard/Pages/Documents.razor`.
 
 **Checkpoint**: User Story 3 preserves old content on replacement failure, requires delete confirmation, and grants no access beyond explicit recipients and authorized managers.
 
@@ -111,17 +111,17 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 ### Tests for User Story 4
 
-- [ ] T038 [P] [US4] Add task attachment tests for task/document authorization, duplicate attachment rejection, and task/project association consistency in `tests/ContosoDashboard.Tests/Services/TaskDocumentIntegrationTests.cs`.
-- [ ] T039 [P] [US4] Add dashboard and project notification tests for recent-five ordering, document count, member recipients, and unauthorized user isolation in `tests/ContosoDashboard.Tests/Services/DocumentDashboardTests.cs`.
+- [X] T038 [P] [US4] Add task attachment tests for task/document authorization, duplicate attachment rejection, and task/project association consistency in `tests/ContosoDashboard.Tests/Services/TaskDocumentIntegrationTests.cs`.
+- [X] T039 [P] [US4] Add dashboard and project notification tests for recent-five ordering, document count, member recipients, and unauthorized user isolation in `tests/ContosoDashboard.Tests/Services/DocumentDashboardTests.cs`.
 
 ### Implementation for User Story 4
 
-- [ ] T040 [P] [US4] Create task-document association with actor, timestamp, and unique task/document relationship in `ContosoDashboard/Models/TaskDocument.cs`.
-- [ ] T041 [US4] Configure task/document/user relationships and uniqueness/index rules in `ContosoDashboard/Data/ApplicationDbContext.cs`.
-- [ ] T042 [US4] Implement authorized task attachment operations and require a document's project to match the task's project in `ContosoDashboard/Services/DocumentService.cs`.
-- [ ] T043 [US4] Add task-document listing, attach-existing, and upload-related-document workflows to `ContosoDashboard/Pages/Tasks.razor`.
-- [ ] T044 [US4] Notify project members after accepted project uploads and add recent-document/count queries to `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/DashboardService.cs`.
-- [ ] T045 [US4] Add the current user's Recent Documents five-item widget and document count summary to `ContosoDashboard/Pages/Index.razor`.
+- [X] T040 [P] [US4] Create task-document association with actor, timestamp, and unique task/document relationship in `ContosoDashboard/Models/TaskDocument.cs`.
+- [X] T041 [US4] Configure task/document/user relationships and uniqueness/index rules in `ContosoDashboard/Data/ApplicationDbContext.cs`.
+- [X] T042 [US4] Implement authorized task attachment operations and require a document's project to match the task's project in `ContosoDashboard/Services/DocumentService.cs`.
+- [X] T043 [US4] Add task-document listing, attach-existing, and upload-related-document workflows to `ContosoDashboard/Pages/Tasks.razor`.
+- [X] T044 [US4] Notify project members after accepted project uploads and add recent-document/count queries to `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/DashboardService.cs`.
+- [X] T045 [US4] Add the current user's Recent Documents five-item widget and document count summary to `ContosoDashboard/Pages/Index.razor`.
 
 **Checkpoint**: User Story 4 exposes only authorized task/project documents and dashboard data for the signed-in user.
 
@@ -133,16 +133,16 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 ### Tests for User Story 5
 
-- [ ] T046 [P] [US5] Add audit tests for uploads, downloads, shares, metadata changes, replacements, deletions, retained title/actor snapshots, and activity timestamps in `tests/ContosoDashboard.Tests/Services/DocumentAuditTests.cs`.
-- [ ] T047 [P] [US5] Add report authorization and aggregation tests for file types, active uploaders, access patterns, and non-administrator denial in `tests/ContosoDashboard.Tests/Services/DocumentReportAuthorizationTests.cs`.
+- [X] T046 [P] [US5] Add audit tests for uploads, downloads, shares, metadata changes, replacements, deletions, retained title/actor snapshots, and activity timestamps in `tests/ContosoDashboard.Tests/Services/DocumentAuditTests.cs`.
+- [X] T047 [P] [US5] Add report authorization and aggregation tests for file types, active uploaders, access patterns, and non-administrator denial in `tests/ContosoDashboard.Tests/Services/DocumentReportAuthorizationTests.cs`.
 
 ### Implementation for User Story 5
 
-- [ ] T048 [P] [US5] Create append-only document activity events with nullable historical IDs and actor/title snapshots in `ContosoDashboard/Models/DocumentActivity.cs`.
-- [ ] T049 [US5] Configure activity persistence without cascading deletion and add report query indexes in `ContosoDashboard/Data/ApplicationDbContext.cs`.
-- [ ] T050 [US5] Record upload, download, delete, share, metadata edit, and replacement events in the authorized document operations in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Controllers/DocumentsController.cs`.
-- [ ] T051 [US5] Implement administrator-authorized activity queries and file-type/uploader/access-pattern report aggregates in `ContosoDashboard/Services/DocumentService.cs`.
-- [ ] T052 [US5] Add an administrator-only activity and reporting page with denied access for all other roles in `ContosoDashboard/Pages/DocumentReports.razor`.
+- [X] T048 [P] [US5] Create append-only document activity events with nullable historical IDs and actor/title snapshots in `ContosoDashboard/Models/DocumentActivity.cs`.
+- [X] T049 [US5] Configure activity persistence without cascading deletion and add report query indexes in `ContosoDashboard/Data/ApplicationDbContext.cs`.
+- [X] T050 [US5] Record upload, download, delete, share, metadata edit, and replacement events in the authorized document operations in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Controllers/DocumentsController.cs`.
+- [X] T051 [US5] Implement administrator-authorized activity queries and file-type/uploader/access-pattern report aggregates in `ContosoDashboard/Services/DocumentService.cs`.
+- [X] T052 [US5] Add an administrator-only activity and reporting page with denied access for all other roles in `ContosoDashboard/Pages/DocumentReports.razor`.
 
 **Checkpoint**: User Story 5 reports all specified activity without losing deletion history and returns no audit data to non-administrators.
 
@@ -150,10 +150,10 @@ description: "Dependency-ordered implementation tasks for document upload and ma
 
 **Purpose**: Verify migrations, authorization boundaries, UI usability, performance targets, and documented local setup across the completed stories.
 
-- [ ] T053 [P] Document existing LocalDB backup, verified baseline adoption, additive migration, and explicit opt-in reset steps in `specs/001-document-management/quickstart.md`.
-- [ ] T054 [P] Add cross-story security tests for guessed IDs, stale membership/share grants, staged-file isolation, and path disclosure in `tests/ContosoDashboard.Tests/Integration/DocumentSecurityRegressionTests.cs`.
-- [ ] T055 Run the narrow/wide UI, 500-document list/search, 25 MB transfer, preview timing, and EICAR scenarios and record environment/results in `specs/001-document-management/quickstart.md`.
-- [ ] T056 Run `dotnet build ContosoDashboard/ContosoDashboard.csproj` and `dotnet test tests/ContosoDashboard.Tests/ContosoDashboard.Tests.csproj`, then record outcomes and any blocked LocalDB/ClamAV checks in `specs/001-document-management/quickstart.md`.
+- [X] T053 [P] Document existing LocalDB backup, verified baseline adoption, additive migration, and explicit opt-in reset steps in `specs/001-document-management/quickstart.md`.
+- [X] T054 [P] Add cross-story security tests for guessed IDs, stale membership/share grants, staged-file isolation, and path disclosure in `tests/ContosoDashboard.Tests/Integration/DocumentSecurityRegressionTests.cs`.
+- [X] T055 Run the narrow/wide UI, 500-document list/search, 25 MB transfer, preview timing, and EICAR scenarios and record environment/results in `specs/001-document-management/quickstart.md`.
+- [X] T056 Run `dotnet build ContosoDashboard/ContosoDashboard.csproj` and `dotnet test tests/ContosoDashboard.Tests/ContosoDashboard.Tests.csproj`, then record outcomes and any blocked LocalDB/ClamAV checks in `specs/001-document-management/quickstart.md`.
 
 ## Dependencies & Execution Order
 

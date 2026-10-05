@@ -56,7 +56,36 @@ The test project uses a fake scanner for deterministic upload/security cases and
 
 - **New LocalDB**: start the app. `DatabaseInitializer` applies the checked-in EF Core migrations and inserts the training seed data. Verify seed users, projects, tasks, and announcements are present.
 - **Existing `EnsureCreated` LocalDB**: back up the database before starting the updated app. Startup checks that the existing dbo table and column inventory matches the checked-in legacy baseline. Only after that check succeeds does it create `__EFMigrationsHistory`, record the baseline migration, and apply the additive document migrations. Existing rows are preserved.
+- After baseline adoption, the checked-in additive migrations apply document support, explicit shares, task associations, and retained activity history in order. The latest migration adds `TaskDocuments` and `DocumentActivities`; no existing training rows are dropped.
 - **Schema mismatch**: startup does not drop, recreate, or mark the database as migrated. It logs the migration failure and leaves existing tables and data untouched. Stop the app and resolve the schema mismatch against the baseline; any reset must be a separately approved, explicit operator action after a verified backup.
+
+### Backup and Explicit Reset
+
+Stop the application before backing up or resetting LocalDB. Create a backup directory and a copy-only backup before any schema change:
+
+```powershell
+New-Item -ItemType Directory -Force C:\LocalDbBackups
+sqlcmd -S "(localdb)\MSSQLLocalDB" -Q "BACKUP DATABASE [ContosoDashboard] TO DISK = N'C:\LocalDbBackups\ContosoDashboard-before-documents.bak' WITH COPY_ONLY, INIT"
+```
+
+Verify the backup file exists and is usable before continuing. Startup never performs a reset. Only when the operator has explicitly chosen to discard the local training database, confirmed the backup, and accepted loss of its training data, may the operator manually run:
+
+```powershell
+sqlcmd -S "(localdb)\MSSQLLocalDB" -Q "ALTER DATABASE [ContosoDashboard] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [ContosoDashboard]"
+```
+
+Restarting the application after that opt-in action creates a fresh database and seed data. Do not run the reset command to address an unexplained schema mismatch; resolve the mismatch or restore the verified backup instead.
+
+## Verification Record (2026-10-05)
+
+- The application was started against an isolated `ContosoDashboardUiVerification` LocalDB and a temporary storage root with the development mock scanner explicitly enabled. The shared training database was not used.
+- Browser checks passed for sign-in, sample upload, metadata editing, user sharing, admin reports, task document listing, and task-bound upload with inherited project association. At 375px and 1425px CSS viewport widths, the page stayed within the viewport and the document results table retained its own horizontal scroll region.
+- With 500 metadata rows in isolated LocalDB, document list navigation/render completed in 695 ms and a title search completed in 158 ms. These are single-run localhost measurements, not a production or typical-network guarantee.
+- An exact 25 MiB text upload completed in 1,343 ms from browser selection to success using localhost, local storage, and the development mock scanner. This excludes real scanner cost and does not represent a typical network transfer.
+- The authorized preview endpoint returned HTTP 200 in 61 ms for a 35-byte synthetic PDF payload. This measures the local response only, not full browser rendering of a representative PDF/image.
+- Final `dotnet build ContosoDashboard/ContosoDashboard.csproj --no-restore` passed. The full `dotnet test tests/ContosoDashboard.Tests/ContosoDashboard.Tests.csproj --no-restore` run passed 40/40 tests. A non-incremental build also reported three existing nullable warnings in `TaskService.cs`; they are outside this feature's scope.
+- ClamAV is not installed on this host. EICAR detection and real-scanner behavior could not be exercised; the development mock was used only for ordinary sample files.
+- Do not treat the synthetic preview timing as meeting the 3-second preview goal. Repeat EICAR and representative preview checks with ClamAV/signatures and real PDF/image fixtures available.
 
 ## Manual End-to-End Scenarios
 

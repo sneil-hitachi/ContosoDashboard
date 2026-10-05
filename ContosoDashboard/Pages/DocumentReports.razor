@@ -1,0 +1,112 @@
+@page "/documents/reports"
+@using ContosoDashboard.Models
+@using ContosoDashboard.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Administrator")]
+@inject IDocumentService DocumentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Document Reports - ContosoDashboard</PageTitle>
+
+<div class="container-fluid py-3">
+    <h1 class="h2 mb-4">Document Activity and Reports</h1>
+
+    @if (isLoading)
+    {
+        <p class="text-muted" role="status">Loading reports...</p>
+    }
+    else if (report is null)
+    {
+        <p class="text-danger" role="alert">Document reports are unavailable for this account.</p>
+    }
+    else
+    {
+        <section class="mb-5" aria-label="Document report aggregates">
+            <h2 class="h5">File types</h2>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead><tr><th scope="col">MIME type</th><th scope="col">Documents</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in report.FileTypes)
+                        {
+                            <tr><td>@item.FileType</td><td>@item.Count</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <h2 class="h5">Active uploaders</h2>
+            <div class="table-responsive mb-4">
+                <table class="table table-sm">
+                    <thead><tr><th scope="col">User</th><th scope="col">Uploads</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in report.Uploaders)
+                        {
+                            <tr><td>@item.UserName</td><td>@item.UploadCount</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <h2 class="h5">Access and activity patterns</h2>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th scope="col">Action</th><th scope="col">Events</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in report.AccessPatterns)
+                        {
+                            <tr><td>@item.Action</td><td>@item.Count</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section aria-label="Recent document activity">
+            <h2 class="h5">Recent activity</h2>
+            @if (activity.Count == 0)
+            {
+                <p class="text-muted">No document activity has been recorded.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr><th scope="col">Time (UTC)</th><th scope="col">Document</th><th scope="col">Action</th><th scope="col">Actor</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in activity)
+                            {
+                                <tr>
+                                    <td>@item.OccurredAtUtc.ToString("u")</td>
+                                    <td>@item.DocumentTitleSnapshot <span class="text-muted">#@item.DocumentId</span></td>
+                                    <td>@item.Action</td>
+                                    <td>@item.ActorNameSnapshot</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private DocumentReportSummary? report;
+    private IReadOnlyList<DocumentActivity> activity = [];
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        report = await DocumentService.GetReportAsync(principal);
+        if (report is not null)
+        {
+            activity = await DocumentService.GetActivityAsync(principal, 250);
+        }
+
+        isLoading = false;
+    }
+}

@@ -22,6 +22,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Document> Documents { get; set; } = null!;
     public DbSet<DocumentTag> DocumentTags { get; set; } = null!;
     public DbSet<DocumentShare> DocumentShares { get; set; } = null!;
+    public DbSet<TaskDocument> TaskDocuments { get; set; } = null!;
+    public DbSet<DocumentActivity> DocumentActivities { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +129,34 @@ public class ApplicationDbContext : DbContext
             .HasIndex(share => new { share.DocumentId, share.RecipientDepartment })
             .IsUnique()
             .HasFilter("[RecipientDepartment] IS NOT NULL");
+
+        modelBuilder.Entity<TaskDocument>()
+            .HasOne(attachment => attachment.Task)
+            .WithMany(task => task.TaskDocuments)
+            .HasForeignKey(attachment => attachment.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TaskDocument>()
+            .HasOne(attachment => attachment.Document)
+            .WithMany(document => document.TaskDocuments)
+            .HasForeignKey(attachment => attachment.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TaskDocument>()
+            .HasOne(attachment => attachment.AttachedByUser)
+            .WithMany()
+            .HasForeignKey(attachment => attachment.AttachedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<TaskDocument>()
+            .HasIndex(attachment => new { attachment.TaskId, attachment.DocumentId })
+            .IsUnique();
+        modelBuilder.Entity<TaskDocument>()
+            .HasIndex(attachment => attachment.DocumentId);
+
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(activity => new { activity.DocumentId, activity.OccurredAtUtc });
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(activity => new { activity.Action, activity.OccurredAtUtc });
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(activity => new { activity.ActorUserId, activity.OccurredAtUtc });
 
         // Seed initial data
         SeedData(modelBuilder);

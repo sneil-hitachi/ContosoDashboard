@@ -43,4 +43,5 @@ public class Document
     public virtual Project? Project { get; set; }
     public virtual ICollection<DocumentTag> Tags { get; set; } = new List<DocumentTag>();
     public virtual ICollection<DocumentShare> Shares { get; set; } = new List<DocumentShare>();
+    public virtual ICollection<TaskDocument> TaskDocuments { get; set; } = new List<TaskDocument>();
 }
