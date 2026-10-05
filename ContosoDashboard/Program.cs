@@ -56,10 +56,8 @@ builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.Configure<DocumentStorageOptions>(builder.Configuration.GetSection("Documents"));
-builder.Services.Configure<ClamAvOptions>(builder.Configuration.GetSection("Documents:Scanner"));
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
-builder.Services.AddSingleton<IClamAvProcessRunner, ClamAvProcessRunner>();
-builder.Services.AddSingleton<IMalwareScanner, ClamAvMalwareScanner>();
+builder.Services.AddDocumentMalwareScanner(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 // Add HttpContextAccessor for accessing user claims

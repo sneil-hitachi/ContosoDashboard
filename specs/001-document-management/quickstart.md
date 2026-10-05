@@ -5,7 +5,7 @@ This guide validates the feature in the local training environment. It does not 
 ## Prerequisites
 
 - Windows with the .NET 10 SDK and SQL Server LocalDB.
-- A local ClamAV Windows installation with `clamscan.exe` and a usable local signature database. Prepare/update signatures before disconnecting; the application must not contact an update service at runtime.
+- For real malware scanning, a local ClamAV Windows installation with `clamscan.exe` and a usable local signature database. Prepare/update signatures before disconnecting; the application must not contact an update service at runtime. For trusted local test uploads without ClamAV, see the development mock option below.
 - Configure `Documents:Scanner:ExecutablePath` to the full path of `clamscan.exe` when it is not on `PATH`, and configure `Documents:StorageRoot` to a writable directory outside `ContosoDashboard/wwwroot`. Keep machine-specific paths in user secrets or an untracked development settings override; do not commit them.
 - The scanner process must be able to read the staged file and its local signature database. Do not run the web application elevated just to make scanning work.
 - Existing LocalDB users/projects may contain training data. Back up before schema changes. Do not drop the database unless you explicitly choose the documented reset fallback.
@@ -15,6 +15,29 @@ If ClamAV, its signature database, or a complete scan result is unavailable, upl
 The application creates private staging and accepted-file subdirectories under `Documents:StorageRoot`; neither is served as static content. If the setting is omitted, the application uses its local application-data directory. Do not point the root at `wwwroot`, a shared public folder, or a directory supplied by a browser request.
 
 To check a local scanner installation before starting the application, run `clamscan.exe --version` and scan the standard EICAR test file in a disposable directory. Use only the standard EICAR test string for detection checks; do not use live malware. A missing executable, unusable signatures, timeout, threat result, or ambiguous scanner output must leave the submitted file unavailable.
+
+## Optional Development Mock Scanner
+
+To test upload workflows without installing ClamAV, run these commands from the `ContosoDashboard` application directory:
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:Documents__Scanner__UseDevelopmentMock = 'true'
+dotnet run
+```
+
+The mock reports every file as clean without inspecting it. Use only trusted test files; do not run malware-detection scenarios with the mock. Other upload validation and authorization remain in effect. A warning is logged when the mock scanner is first resolved.
+
+The option defaults to `false` and is honored only in the `Development` environment. Production and Staging always use ClamAV, even if the flag is set. This flag is an explicit testing bypass, not a fallback when ClamAV fails.
+
+To restore real scanning, stop the application, remove the override, and restart:
+
+```powershell
+Remove-Item Env:Documents__Scanner__UseDevelopmentMock -ErrorAction SilentlyContinue
+dotnet run
+```
+
+Restarting with real scanning does not retroactively scan files uploaded through the mock. Keep mock-uploaded files confined to local test data.
 
 ## Build and Automated Tests
 
