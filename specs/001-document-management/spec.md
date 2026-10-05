@@ -8,6 +8,12 @@
 
 **Input**: User description: `StakeholderDocs/document-upload-and-management-feature.md`
 
+## Clarifications
+
+### Session 2026-10-05
+
+- Q: Should team leads be able to view and manage every document uploaded by their team members, including documents categorized as Personal Files? → A: Team leads can manage documents within their team or project scope; Personal Files remain private unless explicitly shared.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Upload a Document (Priority: P1)
@@ -109,8 +115,8 @@ An administrator reviews document activity and produces reports about document t
 - **FR-005**: The system MUST record upload date and time, uploader, file size, and file type for each accepted document.
 - **FR-006**: The system MUST screen files for viruses and malware before making them available; a file that is unsafe or cannot be cleared MUST NOT be made available.
 - **FR-007**: The system MUST enforce document access according to the current user's identity, role, ownership, project membership, team relationship, and explicit sharing permissions on every document operation; interface visibility alone MUST NOT grant access.
-- **FR-008**: Employees MUST be able to access their own documents, documents for projects they belong to, and documents explicitly shared with them. Team leads MUST be able to view and manage documents uploaded by their team members. Project managers MUST be able to manage documents associated with their projects. Administrators MUST be able to access all documents and audit information.
-- **FR-009**: Project members MUST be able to view and download documents associated with their projects. Personal documents MUST remain private to their owner and authorized administrators unless explicitly shared.
+- **FR-008**: Employees MUST be able to access their own documents, documents for projects they belong to, and documents explicitly shared with them. Team leads MUST be able to view and manage documents within their team or project scope, but MUST NOT access a team member's Personal Files unless explicitly shared with them. Project managers MUST be able to manage documents associated with their projects. Administrators MUST be able to access all documents and audit information.
+- **FR-009**: Project members MUST be able to view and download documents associated with their projects. Personal Files MUST remain private to their owner and authorized administrators unless explicitly shared.
 - **FR-010**: The system MUST provide My Documents and Shared with Me views. My Documents MUST display title, category, upload date, file size, and project association, and support sorting by title, date, category, and size and filtering by category, project, and date range.
 - **FR-011**: The system MUST support document search by title, description, tags, uploader name, and associated project, and MUST restrict returned results and metadata to documents the searching user may access.
 - **FR-012**: Authorized users MUST be able to download documents. The system MUST provide in-browser previews for PDF and image files.
