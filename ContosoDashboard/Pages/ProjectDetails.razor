@@ -197,7 +197,7 @@
                 </section>
                 @if (canManageProject)
                 {
-                    <DocumentUploadForm ProjectId="@project.ProjectId" OnUploaded="ReloadProjectDocuments" />
+                    <DocumentUploadForm ProjectId="@project.ProjectId" AvailableProjects="uploadProjects" OnUploaded="ReloadProjectDocuments" />
                 }
             </div>
 
@@ -286,6 +286,7 @@
 
     private Project? project;
     private IReadOnlyList<Document> projectDocuments = [];
+    private IReadOnlyList<Project> uploadProjects = [];
     private int currentUserId = 0;
     private bool canManageProject;
 
@@ -307,6 +308,7 @@
                 (project.ProjectManagerId == currentUserId || user.IsInRole("Administrator"));
             if (project is not null)
             {
+                uploadProjects = [project];
                 await ReloadProjectDocuments();
             }
         }

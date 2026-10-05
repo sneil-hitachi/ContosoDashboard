@@ -105,6 +105,9 @@
     [Parameter]
     public int? ProjectId { get; set; }
 
+    [Parameter]
+    public IReadOnlyList<Project>? AvailableProjects { get; set; }
+
     private readonly List<SelectedDocumentFile> selectedFiles = [];
     private IReadOnlyList<Project> projects = [];
     private ClaimsPrincipal principal = new();
@@ -114,7 +117,11 @@
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         principal = state.User;
-        if (int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        if (AvailableProjects is not null)
+        {
+            projects = AvailableProjects;
+        }
+        else if (int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
         {
             projects = await ProjectService.GetUserProjectsAsync(userId);
         }

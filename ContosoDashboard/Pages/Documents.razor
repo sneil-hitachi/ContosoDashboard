@@ -19,7 +19,7 @@
         <span class="badge text-bg-light border">@documents.Count documents</span>
     </div>
 
-    <DocumentUploadForm OnUploaded="ReloadDocuments" />
+    <DocumentUploadForm AvailableProjects="projects" OnUploaded="ReloadDocuments" />
 
     <div class="btn-group mt-4 mb-3" role="tablist" aria-label="Document views">
         <button type="button" class="btn @(showShared ? "btn-outline-secondary" : "btn-secondary")" role="tab" aria-selected="@(!showShared)" @onclick="() => SwitchView(false)">My Documents</button>
