@@ -1,0 +1,10 @@
+Contoso Team Reference
+
+Purpose: Test uploading a small team resource.
+
+Document handling
+- Use a clear title and one of the available categories.
+- Add optional tags such as onboarding or process.
+- A clean scan is required before the document becomes available.
+
+This file contains synthetic test content only.
