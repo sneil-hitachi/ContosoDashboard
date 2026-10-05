@@ -21,6 +21,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    overflow-x: clip;
 }
 
 main {
@@ -164,3 +165,5 @@ main {
 .content {
     padding-top: 1.1rem;
 }
+
+

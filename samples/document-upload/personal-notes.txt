@@ -1,0 +1,8 @@
+Personal Files Upload Sample
+
+These synthetic notes are for testing a private, unassociated document. Suggested category: Personal Files. Do not select a project.
+
+Topics
+- Local upload flow
+- Title and category validation
+- Owner-only document visibility

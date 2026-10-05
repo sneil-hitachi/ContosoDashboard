@@ -5,6 +5,8 @@ namespace ContosoDashboard.Data;
 
 public class ApplicationDbContext : DbContext
 {
+    private static readonly DateTime SeedDate = new(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
     {
@@ -17,6 +19,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<Notification> Notifications { get; set; } = null!;
     public DbSet<ProjectMember> ProjectMembers { get; set; } = null!;
     public DbSet<Announcement> Announcements { get; set; } = null!;
+    public DbSet<Document> Documents { get; set; } = null!;
+    public DbSet<DocumentTag> DocumentTags { get; set; } = null!;
+    public DbSet<DocumentShare> DocumentShares { get; set; } = null!;
+    public DbSet<TaskDocument> TaskDocuments { get; set; } = null!;
+    public DbSet<DocumentActivity> DocumentActivities { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +71,93 @@ public class ApplicationDbContext : DbContext
             .HasIndex(u => u.Email)
             .IsUnique();
 
+        modelBuilder.Entity<Document>()
+            .HasOne(document => document.Uploader)
+            .WithMany()
+            .HasForeignKey(document => document.UploadedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Document>()
+            .HasOne(document => document.Project)
+            .WithMany()
+            .HasForeignKey(document => document.ProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Document>()
+            .HasIndex(document => document.FilePath)
+            .IsUnique();
+        modelBuilder.Entity<Document>().HasIndex(document => document.UploadedByUserId);
+        modelBuilder.Entity<Document>().HasIndex(document => document.ProjectId);
+        modelBuilder.Entity<Document>().HasIndex(document => document.Category);
+        modelBuilder.Entity<Document>().HasIndex(document => document.UploadedAtUtc);
+
+        modelBuilder.Entity<DocumentTag>()
+            .HasOne(tag => tag.Document)
+            .WithMany(document => document.Tags)
+            .HasForeignKey(tag => tag.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<DocumentTag>()
+            .HasIndex(tag => new { tag.DocumentId, tag.NormalizedValue })
+            .IsUnique();
+        modelBuilder.Entity<DocumentTag>()
+            .HasIndex(tag => tag.NormalizedValue);
+
+        modelBuilder.Entity<DocumentShare>()
+            .ToTable(table => table.HasCheckConstraint(
+                "CK_DocumentShares_OneRecipient",
+                "([RecipientUserId] IS NOT NULL AND [RecipientDepartment] IS NULL) OR ([RecipientUserId] IS NULL AND [RecipientDepartment] IS NOT NULL)"));
+        modelBuilder.Entity<DocumentShare>()
+            .HasOne(share => share.Document)
+            .WithMany(document => document.Shares)
+            .HasForeignKey(share => share.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<DocumentShare>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(share => share.GrantedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<DocumentShare>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(share => share.RecipientUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<DocumentShare>()
+            .HasIndex(share => new { share.DocumentId, share.RecipientUserId })
+            .IsUnique()
+            .HasFilter("[RecipientUserId] IS NOT NULL");
+        modelBuilder.Entity<DocumentShare>()
+            .HasIndex(share => new { share.DocumentId, share.RecipientDepartment })
+            .IsUnique()
+            .HasFilter("[RecipientDepartment] IS NOT NULL");
+
+        modelBuilder.Entity<TaskDocument>()
+            .HasOne(attachment => attachment.Task)
+            .WithMany(task => task.TaskDocuments)
+            .HasForeignKey(attachment => attachment.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TaskDocument>()
+            .HasOne(attachment => attachment.Document)
+            .WithMany(document => document.TaskDocuments)
+            .HasForeignKey(attachment => attachment.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TaskDocument>()
+            .HasOne(attachment => attachment.AttachedByUser)
+            .WithMany()
+            .HasForeignKey(attachment => attachment.AttachedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<TaskDocument>()
+            .HasIndex(attachment => new { attachment.TaskId, attachment.DocumentId })
+            .IsUnique();
+        modelBuilder.Entity<TaskDocument>()
+            .HasIndex(attachment => attachment.DocumentId);
+
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(activity => new { activity.DocumentId, activity.OccurredAtUtc });
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(activity => new { activity.Action, activity.OccurredAtUtc });
+        modelBuilder.Entity<DocumentActivity>()
+            .HasIndex(activity => new { activity.ActorUserId, activity.OccurredAtUtc });
+
         // Seed initial data
         SeedData(modelBuilder);
     }
@@ -81,7 +175,7 @@ public class ApplicationDbContext : DbContext
                 JobTitle = "Administrator",
                 Role = UserRole.Administrator,
                 AvailabilityStatus = AvailabilityStatus.Available,
-                CreatedDate = DateTime.UtcNow,
+                CreatedDate = SeedDate,
                 EmailNotificationsEnabled = true,
                 InAppNotificationsEnabled = true
             },
@@ -94,7 +188,7 @@ public class ApplicationDbContext : DbContext
                 JobTitle = "Project Manager",
                 Role = UserRole.ProjectManager,
                 AvailabilityStatus = AvailabilityStatus.Available,
-                CreatedDate = DateTime.UtcNow,
+                CreatedDate = SeedDate,
                 EmailNotificationsEnabled = true,
                 InAppNotificationsEnabled = true
             },
@@ -107,7 +201,7 @@ public class ApplicationDbContext : DbContext
                 JobTitle = "Team Lead",
                 Role = UserRole.TeamLead,
                 AvailabilityStatus = AvailabilityStatus.Available,
-                CreatedDate = DateTime.UtcNow,
+                CreatedDate = SeedDate,
                 EmailNotificationsEnabled = true,
                 InAppNotificationsEnabled = true
             },
@@ -120,7 +214,7 @@ public class ApplicationDbContext : DbContext
                 JobTitle = "Software Engineer",
                 Role = UserRole.Employee,
                 AvailabilityStatus = AvailabilityStatus.Available,
-                CreatedDate = DateTime.UtcNow,
+                CreatedDate = SeedDate,
                 EmailNotificationsEnabled = true,
                 InAppNotificationsEnabled = true
             }
@@ -134,11 +228,11 @@ public class ApplicationDbContext : DbContext
                 Name = "ContosoDashboard Development",
                 Description = "Internal employee productivity dashboard",
                 ProjectManagerId = 2,
-                StartDate = DateTime.UtcNow.AddDays(-30),
-                TargetCompletionDate = DateTime.UtcNow.AddDays(60),
+                StartDate = SeedDate.AddDays(-30),
+                TargetCompletionDate = SeedDate.AddDays(60),
                 Status = ProjectStatus.Active,
-                CreatedDate = DateTime.UtcNow.AddDays(-30),
-                UpdatedDate = DateTime.UtcNow
+                CreatedDate = SeedDate.AddDays(-30),
+                UpdatedDate = SeedDate
             }
         );
 
@@ -151,12 +245,12 @@ public class ApplicationDbContext : DbContext
                 Description = "Create entity relationship diagram and database design",
                 Priority = TaskPriority.High,
                 Status = Models.TaskStatus.Completed,
-                DueDate = DateTime.UtcNow.AddDays(-20),
+                DueDate = SeedDate.AddDays(-20),
                 AssignedUserId = 4,
                 CreatedByUserId = 2,
                 ProjectId = 1,
-                CreatedDate = DateTime.UtcNow.AddDays(-30),
-                UpdatedDate = DateTime.UtcNow.AddDays(-20)
+                CreatedDate = SeedDate.AddDays(-30),
+                UpdatedDate = SeedDate.AddDays(-20)
             },
             new TaskItem
             {
@@ -165,12 +259,12 @@ public class ApplicationDbContext : DbContext
                 Description = "Set up Microsoft Entra ID authentication",
                 Priority = TaskPriority.Critical,
                 Status = Models.TaskStatus.InProgress,
-                DueDate = DateTime.UtcNow.AddDays(5),
+                DueDate = SeedDate.AddDays(5),
                 AssignedUserId = 4,
                 CreatedByUserId = 2,
                 ProjectId = 1,
-                CreatedDate = DateTime.UtcNow.AddDays(-25),
-                UpdatedDate = DateTime.UtcNow
+                CreatedDate = SeedDate.AddDays(-25),
+                UpdatedDate = SeedDate
             },
             new TaskItem
             {
@@ -179,12 +273,12 @@ public class ApplicationDbContext : DbContext
                 Description = "Design user interface mockups for all main pages",
                 Priority = TaskPriority.Medium,
                 Status = Models.TaskStatus.NotStarted,
-                DueDate = DateTime.UtcNow.AddDays(10),
+                DueDate = SeedDate.AddDays(10),
                 AssignedUserId = 4,
                 CreatedByUserId = 2,
                 ProjectId = 1,
-                CreatedDate = DateTime.UtcNow.AddDays(-20),
-                UpdatedDate = DateTime.UtcNow.AddDays(-20)
+                CreatedDate = SeedDate.AddDays(-20),
+                UpdatedDate = SeedDate.AddDays(-20)
             }
         );
 
@@ -196,7 +290,7 @@ public class ApplicationDbContext : DbContext
                 ProjectId = 1,
                 UserId = 3,
                 Role = "TeamLead",
-                AssignedDate = DateTime.UtcNow.AddDays(-30)
+                AssignedDate = SeedDate.AddDays(-30)
             },
             new ProjectMember
             {
@@ -204,7 +298,7 @@ public class ApplicationDbContext : DbContext
                 ProjectId = 1,
                 UserId = 4,
                 Role = "Developer",
-                AssignedDate = DateTime.UtcNow.AddDays(-30)
+                AssignedDate = SeedDate.AddDays(-30)
             }
         );
 
@@ -216,8 +310,8 @@ public class ApplicationDbContext : DbContext
                 Title = "Welcome to ContosoDashboard",
                 Content = "Welcome to the new ContosoDashboard application. This platform will help you manage your tasks and projects more efficiently.",
                 CreatedByUserId = 1,
-                PublishDate = DateTime.UtcNow,
-                ExpiryDate = DateTime.UtcNow.AddDays(30),
+                PublishDate = SeedDate,
+                ExpiryDate = SeedDate.AddDays(30),
                 IsActive = true
             }
         );

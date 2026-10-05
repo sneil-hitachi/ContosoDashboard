@@ -3,8 +3,10 @@
 @using ContosoDashboard.Models
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
+@using ContosoDashboard.Shared
 @attribute [Authorize]
 @inject ITaskService TaskService
+@inject IDocumentService DocumentService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>My Tasks - ContosoDashboard</PageTitle>
@@ -126,12 +128,65 @@
                                 <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewTaskDetails(task.TaskId)">
                                     <i class="bi bi-eye"></i>
                                 </button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenTaskDocuments(task)">Documents</button>
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
+    }
+
+    @if (activeTask is not null)
+    {
+        <section class="border-top mt-4 pt-4" aria-label="Task documents">
+            <div class="d-flex justify-content-between align-items-start gap-3">
+                <div>
+                    <h2 class="h5">Documents: @activeTask.Title</h2>
+                    <p class="text-muted">Documents must match this task's project.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseTaskDocuments">Close</button>
+            </div>
+
+            @if (taskDocuments.Count == 0)
+            {
+                <p class="text-muted">No documents are attached to this task.</p>
+            }
+            else
+            {
+                <ul class="list-group mb-3">
+                    @foreach (var document in taskDocuments)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                            <span>@document.Title <span class="text-muted">(@document.OriginalFileName)</span></span>
+                            <a class="btn btn-sm btn-outline-primary" href="/documents/@document.DocumentId/download">Download</a>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="row g-2 align-items-end mb-4">
+                <div class="col-12 col-lg-6">
+                    <label class="form-label" for="attach-existing-document">Attach existing document</label>
+                    <InputSelect id="attach-existing-document" class="form-select" @bind-Value="selectedDocumentValue">
+                        <option value="">Select a document</option>
+                        @foreach (var document in attachableDocuments)
+                        {
+                            <option value="@document.DocumentId">@document.Title</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-outline-primary" @onclick="AttachExistingDocument" disabled="@string.IsNullOrWhiteSpace(selectedDocumentValue)">Attach</button>
+                </div>
+            </div>
+
+            <DocumentUploadForm ProjectId="activeTask.ProjectId" TaskId="activeTask.TaskId" AvailableProjects="ActiveTaskProjects" OnUploaded="LoadTaskDocuments" />
+            @if (!string.IsNullOrWhiteSpace(taskDocumentMessage))
+            {
+                <p class="mt-3" role="status">@taskDocumentMessage</p>
+            }
+        </section>
     }
 </div>
 
@@ -140,12 +195,25 @@
     private string filterStatus = "";
     private string filterPriority = "";
     private int currentUserId = 0;
+    private ClaimsPrincipal principal = new();
+    private TaskItem? activeTask;
+    private IReadOnlyList<Document> taskDocuments = [];
+    private IReadOnlyList<Document> authorizedDocuments = [];
+    private string? selectedDocumentValue;
+    private string? taskDocumentMessage;
+
+    private IEnumerable<Document> attachableDocuments => authorizedDocuments
+        .Where(document => document.ProjectId == activeTask?.ProjectId &&
+            taskDocuments.All(attached => attached.DocumentId != document.DocumentId));
+
+    private IReadOnlyList<Project> ActiveTaskProjects => activeTask?.Project is { } project ? [project] : [];
 
     protected override async Task OnInitializedAsync()
     {
         // Get current user ID from authentication claims
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+        principal = user;
         var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
         if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
         {
@@ -161,6 +229,47 @@
     private async Task LoadTasks()
     {
         tasks = await TaskService.GetUserTasksAsync(currentUserId);
+    }
+
+    private async Task OpenTaskDocuments(TaskItem task)
+    {
+        activeTask = task;
+        selectedDocumentValue = null;
+        taskDocumentMessage = null;
+        authorizedDocuments = await DocumentService.SearchAsync(principal, new DocumentQueryOptions());
+        await LoadTaskDocuments();
+    }
+
+    private async Task LoadTaskDocuments()
+    {
+        if (activeTask is not null)
+        {
+            taskDocuments = await DocumentService.GetTaskDocumentsAsync(principal, activeTask.TaskId);
+            authorizedDocuments = await DocumentService.SearchAsync(principal, new DocumentQueryOptions());
+        }
+    }
+
+    private void CloseTaskDocuments()
+    {
+        activeTask = null;
+        taskDocuments = [];
+        authorizedDocuments = [];
+    }
+
+    private async Task AttachExistingDocument()
+    {
+        if (activeTask is null || !int.TryParse(selectedDocumentValue, out var documentId))
+        {
+            return;
+        }
+
+        var attached = await DocumentService.AttachToTaskAsync(principal, activeTask.TaskId, documentId);
+        taskDocumentMessage = attached ? "Document attached." : "The document could not be attached to this task.";
+        if (attached)
+        {
+            selectedDocumentValue = null;
+            await LoadTaskDocuments();
+        }
     }
 
     private async Task ApplyFilters()

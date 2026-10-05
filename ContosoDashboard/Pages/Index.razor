@@ -55,6 +55,32 @@
         </div>
     }
 
+    @if (summary is not null)
+    {
+        <section class="border-top border-bottom py-4 mb-4" aria-label="Recent documents">
+            <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                <h2 class="h4 mb-0">Recent Documents</h2>
+                <p class="text-muted mb-0">@summary.DocumentCount documents</p>
+            </div>
+            @if (summary.RecentDocuments.Count == 0)
+            {
+                <p class="text-muted mt-3 mb-0">No documents uploaded yet.</p>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush mt-2">
+                    @foreach (var document in summary.RecentDocuments)
+                    {
+                        <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2 px-0">
+                            <span><a href="/documents/@document.DocumentId/download">@document.Title</a> <span class="text-muted">@document.Category</span></span>
+                            <span class="small text-muted">@document.UploadedAtUtc.ToLocalTime().ToString("g")</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+
     @if (announcements != null && announcements.Any())
     {
         <div class="row mb-4">

@@ -1,0 +1,500 @@
+@page "/documents"
+@using System.Security.Claims
+@using ContosoDashboard.Models
+@using ContosoDashboard.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IDocumentService DocumentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IProjectService ProjectService
+@inject IUserService UserService
+
+<PageTitle>My Documents - ContosoDashboard</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Documents</h1>
+            <p class="text-muted mb-0">Your uploads and documents shared with you</p>
+        </div>
+        <span class="badge text-bg-light border">@documents.Count documents</span>
+        @if (principal.IsInRole(UserRole.Administrator.ToString()))
+        {
+            <a class="btn btn-sm btn-outline-secondary" href="/documents/reports">Document reports</a>
+        }
+    </div>
+
+    <DocumentUploadForm AvailableProjects="projects" OnUploaded="ReloadDocuments" />
+
+    <div class="btn-group mt-4 mb-3" role="tablist" aria-label="Document views">
+        <button type="button" class="btn @(showShared ? "btn-outline-secondary" : "btn-secondary")" role="tab" aria-selected="@(!showShared)" @onclick="() => SwitchView(false)">My Documents</button>
+        <button type="button" class="btn @(showShared ? "btn-secondary" : "btn-outline-secondary")" role="tab" aria-selected="@showShared" @onclick="() => SwitchView(true)">Shared with Me</button>
+    </div>
+
+    <section aria-label="Document search and filters">
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-12 col-lg-3">
+                <label class="form-label" for="document-search">Search</label>
+                <InputText id="document-search" class="form-control" @bind-Value="searchTerm" placeholder="Title, description, tag, uploader, project" />
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label" for="document-category">Category</label>
+                <InputSelect id="document-category" class="form-select" @bind-Value="category">
+                    <option value="">All categories</option>
+                    @foreach (var value in ContosoDashboard.Services.DocumentService.Categories)
+                    {
+                        <option value="@value">@value</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label" for="document-project">Project</label>
+                <InputSelect id="document-project" class="form-select" @bind-Value="projectValue">
+                    <option value="">All projects</option>
+                    @foreach (var project in projects)
+                    {
+                        <option value="@project.ProjectId">@project.Name</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-6 col-md-3 col-lg-1">
+                <label class="form-label" for="document-from">From</label>
+                <input id="document-from" class="form-control" type="date" value="@fromDate" @onchange="args => fromDate = args.Value?.ToString()" />
+            </div>
+            <div class="col-6 col-md-3 col-lg-1">
+                <label class="form-label" for="document-through">Through</label>
+                <input id="document-through" class="form-control" type="date" value="@throughDate" @onchange="args => throughDate = args.Value?.ToString()" />
+            </div>
+            <div class="col-7 col-md-4 col-lg-2">
+                <label class="form-label" for="document-sort">Sort by</label>
+                <InputSelect id="document-sort" class="form-select" @bind-Value="sortBy">
+                    <option value="title">Title</option>
+                    <option value="date">Upload date</option>
+                    <option value="category">Category</option>
+                    <option value="size">Size</option>
+                </InputSelect>
+            </div>
+            <div class="col-5 col-md-2 col-lg-1 d-grid">
+                <button type="button" class="btn btn-outline-secondary" @onclick="ToggleSort" aria-label="Toggle sort direction">@(sortDescending ? "Newest" : "Oldest")</button>
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button type="button" class="btn btn-primary" @onclick="ReloadDocuments">Apply</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="ClearFilters">Clear</button>
+            </div>
+        </div>
+    </section>
+
+    <section aria-label="Document results">
+        @if (documents.Count == 0)
+        {
+            <p class="text-muted">@(showShared ? "No documents have been shared with you." : "No documents match these filters.")</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col">Title</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Uploaded</th>
+                            <th scope="col">Uploader</th>
+                            <th scope="col">Size</th>
+                            <th scope="col">Project</th>
+                            <th scope="col">File type</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var document in documents)
+                        {
+                            <tr @key="document.DocumentId">
+                                <td>
+                                    <div class="fw-semibold">@document.Title</div>
+                                    <div class="small text-muted">@document.OriginalFileName</div>
+                                </td>
+                                <td>@document.Category</td>
+                                <td>@document.UploadedAtUtc.ToLocalTime().ToString("g")</td>
+                                <td>@document.Uploader.DisplayName</td>
+                                <td>@FormatSize(document.FileSize)</td>
+                                <td>@(document.Project?.Name ?? "Personal")</td>
+                                <td>@document.FileType</td>
+                                <td class="text-end text-nowrap">
+                                    @if (document.FileType is "application/pdf" or "image/jpeg" or "image/png")
+                                    {
+                                        <a class="btn btn-sm btn-outline-secondary" href="/documents/@document.DocumentId/preview" target="_blank" rel="noopener">Preview</a>
+                                    }
+                                    <a class="btn btn-sm btn-outline-primary" href="/documents/@document.DocumentId/download">Download</a>
+                                    @if (CanManage(document))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-dark" @onclick="() => OpenManagement(document)">Manage</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @if (managementDocument is not null)
+    {
+        <section class="border-top mt-4 pt-4" aria-label="Manage document">
+            <div class="d-flex justify-content-between align-items-start gap-3">
+                <div>
+                    <h2 class="h5">Manage: @managementDocument.Title</h2>
+                    <p class="text-muted">@managementDocument.OriginalFileName</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseManagement">Close</button>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-12 col-xl-6">
+                    <h3 class="h6">Document details</h3>
+                    <div class="mb-2">
+                        <label class="form-label" for="edit-document-title">Title</label>
+                        <InputText id="edit-document-title" class="form-control" @bind-Value="editTitle" maxlength="255" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" for="edit-document-category">Category</label>
+                        <InputSelect id="edit-document-category" class="form-select" @bind-Value="editCategory">
+                            @foreach (var value in ContosoDashboard.Services.DocumentService.Categories)
+                            {
+                                <option value="@value">@value</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" for="edit-document-description">Description</label>
+                        <InputTextArea id="edit-document-description" class="form-control" @bind-Value="editDescription" maxlength="2000" rows="2" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" for="edit-document-tags">Tags</label>
+                        <InputText id="edit-document-tags" class="form-control" @bind-Value="editTags" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="edit-document-project">Project</label>
+                        <InputSelect id="edit-document-project" class="form-select" @bind-Value="editProjectValue">
+                            <option value="">No project</option>
+                            @foreach (var project in projects)
+                            {
+                                <option value="@project.ProjectId">@project.Name</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <button type="button" class="btn btn-primary" @onclick="SaveMetadata">Save details</button>
+                </div>
+
+                <div class="col-12 col-xl-6">
+                    <h3 class="h6">Replace file</h3>
+                    <InputFile OnChange="SelectReplacement" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png" class="form-control mb-2" />
+                    <button type="button" class="btn btn-outline-primary" @onclick="ReplaceFile" disabled="@(replacementFile is null)">Replace with selected file</button>
+
+                    <hr />
+                    <h3 class="h6">Share</h3>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-5">
+                            <label class="form-label" for="share-recipient-type">Recipient type</label>
+                            <InputSelect id="share-recipient-type" class="form-select" @bind-Value="shareRecipientType">
+                                <option value="user">Person</option>
+                                <option value="department">Department</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-7">
+                            @if (shareRecipientType == "user")
+                            {
+                                <label class="form-label" for="share-recipient-user">Person</label>
+                                <InputSelect id="share-recipient-user" class="form-select" @bind-Value="shareRecipientUserId">
+                                    <option value="">Select a person</option>
+                                    @foreach (var user in users.Where(user => user.UserId != currentUserId))
+                                    {
+                                        <option value="@user.UserId">@user.DisplayName (@user.Department)</option>
+                                    }
+                                </InputSelect>
+                            }
+                            else
+                            {
+                                <label class="form-label" for="share-recipient-department">Department</label>
+                                <InputSelect id="share-recipient-department" class="form-select" @bind-Value="shareRecipientDepartment">
+                                    <option value="">Select a department</option>
+                                    @foreach (var department in users.Select(user => user.Department).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().Order())
+                                    {
+                                        <option value="@department">@department</option>
+                                    }
+                                </InputSelect>
+                            }
+                        </div>
+                        <div class="col-12">
+                            <button type="button" class="btn btn-outline-primary" @onclick="CreateShare">Grant access</button>
+                        </div>
+                    </div>
+                    @if (shares.Count > 0)
+                    {
+                        <ul class="list-group list-group-flush mt-3">
+                            @foreach (var share in shares)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center gap-2 px-0">
+                                    <span>@ShareRecipientName(share)</span>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RevokeShare(share.DocumentShareId)">Revoke</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    <hr />
+                    <h3 class="h6 text-danger">Delete document</h3>
+                    <div class="form-check mb-2">
+                        <input id="confirm-document-delete" class="form-check-input" type="checkbox" @bind="deleteConfirmed" />
+                        <label class="form-check-label" for="confirm-document-delete">Permanently delete this document and its file</label>
+                    </div>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteDocument" disabled="@(!deleteConfirmed)">Delete permanently</button>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(managementMessage))
+            {
+                <p class="mt-3" role="status">@managementMessage</p>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<Document> documents = [];
+    private IReadOnlyList<Project> projects = [];
+    private ClaimsPrincipal principal = new();
+    private IReadOnlyList<User> users = [];
+    private IReadOnlyList<DocumentShare> shares = [];
+    private Document? managementDocument;
+    private string editTitle = string.Empty;
+    private string editCategory = string.Empty;
+    private string? editDescription;
+    private string? editProjectValue;
+    private string editTags = string.Empty;
+    private string shareRecipientType = "user";
+    private string? shareRecipientUserId;
+    private string? shareRecipientDepartment;
+    private IBrowserFile? replacementFile;
+    private string? managementMessage;
+    private bool deleteConfirmed;
+    private int currentUserId;
+    private bool showShared;
+    private bool sortDescending = true;
+    private string? searchTerm;
+    private string? category;
+    private string? projectValue;
+    private string sortBy = "date";
+    private string? fromDate;
+    private string? throughDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        principal = authState.User;
+        if (int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out currentUserId))
+        {
+            projects = await ProjectService.GetUserProjectsAsync(currentUserId);
+            users = await UserService.GetAllUsersAsync();
+        }
+
+        await ReloadDocuments();
+    }
+
+    private async Task ReloadDocuments()
+    {
+        var query = new DocumentQueryOptions
+        {
+            SearchTerm = searchTerm,
+            Category = category,
+            ProjectId = int.TryParse(projectValue, out var projectId) ? projectId : null,
+            FromUtc = ParseDate(fromDate),
+            ThroughUtc = ParseDate(throughDate)?.AddDays(1).AddTicks(-1),
+            SortBy = sortBy,
+            SortDescending = sortDescending,
+            OwnerOnly = !showShared,
+            SharedWithMeOnly = showShared
+        };
+        documents = await DocumentService.SearchAsync(principal, query);
+    }
+
+    private async Task SwitchView(bool shared)
+    {
+        showShared = shared;
+        await ReloadDocuments();
+    }
+
+    private async Task ToggleSort()
+    {
+        sortDescending = !sortDescending;
+        await ReloadDocuments();
+    }
+
+    private async Task ClearFilters()
+    {
+        searchTerm = null;
+        category = null;
+        projectValue = null;
+        fromDate = null;
+        throughDate = null;
+        sortBy = "date";
+        sortDescending = true;
+        await ReloadDocuments();
+    }
+
+    private bool CanManage(Document document)
+    {
+        return document.UploadedByUserId == currentUserId ||
+               principal.IsInRole(UserRole.Administrator.ToString()) ||
+               document.Project?.ProjectManagerId == currentUserId ||
+               (document.Category != "Personal Files" &&
+                principal.IsInRole(UserRole.TeamLead.ToString()) &&
+                principal.FindFirstValue("Department") == document.Uploader.Department);
+    }
+
+    private async Task OpenManagement(Document document)
+    {
+        managementDocument = document;
+        editTitle = document.Title;
+        editCategory = document.Category;
+        editDescription = document.Description;
+        editProjectValue = document.ProjectId?.ToString();
+        editTags = string.Join(", ", document.Tags.Select(tag => tag.Value));
+        shares = await DocumentService.GetDocumentSharesAsync(principal, document.DocumentId);
+        replacementFile = null;
+        managementMessage = null;
+        deleteConfirmed = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseManagement()
+    {
+        managementDocument = null;
+        shares = [];
+        replacementFile = null;
+    }
+
+    private async Task SaveMetadata()
+    {
+        if (managementDocument is null)
+        {
+            return;
+        }
+
+        var result = await DocumentService.UpdateMetadataAsync(principal, managementDocument.DocumentId,
+            new DocumentMetadataUpdateRequest(editTitle, editCategory, editDescription,
+                int.TryParse(editProjectValue, out var projectId) ? projectId : null,
+                editTags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
+        managementMessage = result.Success ? "Document details updated." : result.Error;
+        if (result.Success)
+        {
+            await ReloadDocuments();
+            managementDocument = documents.FirstOrDefault(document => document.DocumentId == managementDocument.DocumentId) ?? managementDocument;
+        }
+    }
+
+    private void SelectReplacement(InputFileChangeEventArgs args)
+    {
+        replacementFile = args.File;
+    }
+
+    private async Task ReplaceFile()
+    {
+        if (managementDocument is null || replacementFile is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var content = replacementFile.OpenReadStream(ContosoDashboard.Services.DocumentService.MaximumFileSizeBytes);
+            var result = await DocumentService.ReplaceFileAsync(principal, managementDocument.DocumentId,
+                new DocumentUploadRequest
+                {
+                    OriginalFileName = replacementFile.Name,
+                    Title = managementDocument.Title,
+                    Category = managementDocument.Category,
+                    ContentType = replacementFile.ContentType,
+                    Content = content
+                });
+            managementMessage = result.Success ? "File replaced." : result.Error;
+            if (result.Success)
+            {
+                replacementFile = null;
+                await ReloadDocuments();
+            }
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            managementMessage = "The selected file could not be read. Select it again and retry.";
+        }
+    }
+
+    private async Task CreateShare()
+    {
+        if (managementDocument is null)
+        {
+            return;
+        }
+
+        var request = shareRecipientType == "user"
+            ? new DocumentShareGrantRequest(int.TryParse(shareRecipientUserId, out var userId) ? userId : null)
+            : new DocumentShareGrantRequest(RecipientDepartment: shareRecipientDepartment);
+        var result = await DocumentService.CreateShareAsync(principal, managementDocument.DocumentId, request);
+        managementMessage = result.Success ? "Access granted." : result.Error;
+        if (result.Success)
+        {
+            shares = await DocumentService.GetDocumentSharesAsync(principal, managementDocument.DocumentId);
+        }
+    }
+
+    private async Task RevokeShare(int shareId)
+    {
+        if (managementDocument is null)
+        {
+            return;
+        }
+
+        var revoked = await DocumentService.RevokeShareAsync(principal, managementDocument.DocumentId, shareId);
+        managementMessage = revoked ? "Access revoked." : "The share could not be revoked.";
+        shares = await DocumentService.GetDocumentSharesAsync(principal, managementDocument.DocumentId);
+    }
+
+    private async Task DeleteDocument()
+    {
+        if (managementDocument is null || !deleteConfirmed)
+        {
+            return;
+        }
+
+        var result = await DocumentService.DeleteAsync(principal, managementDocument.DocumentId, confirmed: true);
+        if (result.Success)
+        {
+            CloseManagement();
+            await ReloadDocuments();
+        }
+        else
+        {
+            managementMessage = result.Error;
+        }
+    }
+
+    private string ShareRecipientName(DocumentShare share)
+    {
+        return share.RecipientUserId.HasValue
+            ? users.FirstOrDefault(user => user.UserId == share.RecipientUserId)?.DisplayName ?? "Unknown user"
+            : $"Department: {share.RecipientDepartment}";
+    }
+
+    private static DateTime? ParseDate(string? value)
+    {
+        return DateTime.TryParse(value, out var date) ? DateTime.SpecifyKind(date, DateTimeKind.Utc) : null;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        return bytes < 1024 * 1024
+            ? $"{bytes / 1024d:0.#} KB"
+            : $"{bytes / (1024d * 1024d):0.#} MB";
+    }
+}
